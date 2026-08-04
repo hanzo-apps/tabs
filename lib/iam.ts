@@ -20,6 +20,7 @@
 
 import {
   configureIam,
+  getIam,
   getSession,
   handleCallback,
   logout,
@@ -51,6 +52,32 @@ export function iam() {
 /** Whether this browser holds a live session. */
 export function session() {
   iam();
+  return getSession();
+}
+
+/**
+ * Renew the access token with the refresh grant, returning the live session.
+ *
+ * An access token lasts an hour and Tabs is a window you leave open all day
+ * watching agents work, so without this a session ends mid-afternoon and drops
+ * you at a sign-in screen with panes still on screen.
+ *
+ * The refresh grant, not OIDC's `prompt=none` iframe: hanzo.id sends
+ * `frame-ancestors 'none'`, which is the right answer for a login page and makes
+ * silent renew structurally unavailable no matter what this app's own CSP allows.
+ * A public client's refresh token is the mechanism that works, and it needs no
+ * third-party cookie to do it.
+ *
+ * Failure is not an error here — an expired or revoked refresh token means the
+ * session is simply over, and the caller shows the sign-in screen.
+ */
+export async function renew() {
+  iam();
+  try {
+    await getIam().refreshAccessToken();
+  } catch {
+    /* the session is over; getSession reports it and the caller signs in again */
+  }
   return getSession();
 }
 
