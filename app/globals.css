@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Monochrome, and true black where the terminal is: it is the deepest surface in
+   the product and should read that way. Everything else sits above it. */
+@theme {
+  --color-background: #0a0a0a;
+  --color-surface: #111111;
+  --color-line: rgba(255, 255, 255, 0.08);
+}
+
+html, body { height: 100%; }
+* { -webkit-tap-highlight-color: transparent; }
+
+/* Touch targets. A bare button in this app is a real control, and a control you
+   cannot reliably hit is a control that does not work. */
+@media (pointer: coarse) {
+  button, a[role="button"] { min-height: 44px; }
+}

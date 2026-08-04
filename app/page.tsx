@@ -1,0 +1,97 @@
+import Link from 'next/link';
+
+export const metadata = {
+  title: 'Hanzo Tabs — keep tabs on your agents',
+  description:
+    'A browser terminal workspace for the machines you have linked. Split, tile and sweep through every shell your coding agents are working in, from a laptop or a phone.',
+};
+
+/** One claim per row: what it is, why it is unusual, and nothing else. */
+const FACTS = [
+  {
+    k: 'No server to run',
+    v: 'Tabs has no backend. `hanzo link` on a machine publishes a terminal over a zero-trust tunnel, and Tabs frames it. Nothing to deploy, nothing to keep up, no port to open.',
+  },
+  {
+    k: 'Many shells, one link',
+    v: 'A shell is a URL. One link serves as many independent tmux sessions as you ask for, so a build can run in one pane while you work in another — on the same box or a different one.',
+  },
+  {
+    k: 'Your terminal, not a viewer',
+    v: 'A real xterm.js terminal with 10k lines of scrollback, true colour and a cursor that blinks. Type in it, page through it, resize it.',
+  },
+  {
+    k: 'Closing a pane loses nothing',
+    v: 'Every shell is a tmux session that keeps running when the browser goes away. Reopen it by name and the scrollback is exactly where you left it.',
+  },
+  {
+    k: 'Works on a phone',
+    v: 'Splits become swipeable pages instead of unreadable slivers, and a key row gives you Esc, Ctrl, Tab and arrows — the keys a soft keyboard does not have.',
+  },
+  {
+    k: 'Open source, MIT',
+    v: 'The layout engine, the terminal client and this site. Fork it, host it, or run it against your own machines.',
+  },
+];
+
+export default function Marketing() {
+  return (
+    <main className="mx-auto max-w-3xl px-6 py-20">
+      <p className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">Hanzo Tabs</p>
+      <h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-neutral-50 sm:text-5xl">
+        Keep tabs on your agents.
+      </h1>
+      <p className="mt-5 max-w-xl text-lg leading-relaxed text-neutral-400">
+        Your coding agents work in shells on real machines. Tabs puts every one of those shells in
+        front of you — split, tiled, and reachable from anywhere you can open a browser.
+      </p>
+
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        <Link
+          href="/app"
+          className="inline-flex min-h-11 items-center rounded-lg bg-neutral-50 px-5 text-sm font-medium text-neutral-950 transition-colors hover:bg-white"
+        >
+          Open Tabs
+        </Link>
+        <a
+          href="https://github.com/hanzoai/tabs"
+          className="inline-flex min-h-11 items-center rounded-lg border border-neutral-800 px-5 text-sm text-neutral-300 transition-colors hover:border-neutral-700 hover:text-neutral-50"
+        >
+          Source
+        </a>
+      </div>
+
+      {/* The one instruction that makes the product exist. */}
+      <div className="mt-14 rounded-xl border border-neutral-800 bg-neutral-950/60 p-5">
+        <p className="text-xs text-neutral-500">Link a machine, and it appears here.</p>
+        <pre className="mt-3 overflow-x-auto font-mono text-sm text-neutral-200">
+          <code>hanzo link</code>
+        </pre>
+        <p className="mt-3 text-xs leading-relaxed text-neutral-500">
+          Run it on a laptop, a workstation, a GPU box — anything with a shell. The machine keeps
+          the connection; nothing is exposed to the network it sits on.
+        </p>
+      </div>
+
+      <dl className="mt-16 grid gap-x-10 gap-y-8 sm:grid-cols-2">
+        {FACTS.map((f) => (
+          <div key={f.k}>
+            <dt className="text-sm font-medium text-neutral-100">{f.k}</dt>
+            <dd className="mt-1.5 text-sm leading-relaxed text-neutral-400">{f.v}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <footer className="mt-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-neutral-900 pt-6 text-xs text-neutral-600">
+        <span>MIT</span>
+        <a className="hover:text-neutral-400" href="https://hanzo.app">
+          hanzo.app
+        </a>
+        <a className="hover:text-neutral-400" href="https://github.com/hanzoai/tabs">
+          github.com/hanzoai/tabs
+        </a>
+        <span className="ml-auto">Hanzo AI</span>
+      </footer>
+    </main>
+  );
+}
