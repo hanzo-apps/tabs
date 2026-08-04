@@ -1,18 +1,32 @@
 name: Release
-# Cuts ghcr.io/hanzoai/tabs, which the operator values file pins.
+# Publishes tabs.hanzo.ai.
+#
+# Tabs is a STATIC EXPORT, so a release is a bucket sync, not an image build. The
+# server in front of it is hanzoai/static, pinned in the operator values file and
+# released on its own cadence — so building a container here produced an image
+# that nothing deployed, and the only way a change ever reached the site was by
+# hand. That is what this replaces.
+#
+# The endpoint is the PUBLIC s3.hanzo.ai, not the in-cluster service address the
+# serving pod uses: these runners are not in the cluster. Same bucket, same
+# bytes, different door.
+#
 # Runs on the forge (git.hanzo.ai) native runners — see hanzoai/app/release.yml.
 on:
   push:
     branches: [main]
     paths-ignore: ['**.md', '.hanzo/workflows/**']
   workflow_dispatch:
-permissions: { contents: write, packages: write }
+permissions: { contents: write }
 concurrency: { group: release-tabs, cancel-in-progress: false }
 jobs:
-  test:
+  publish:
     runs-on: [hanzo-build-linux-amd64]
+    env:
+      BUCKET: tabs
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - run: npm ci --no-audit --no-fund
@@ -20,34 +34,48 @@ jobs:
         run: npm run typecheck
       - name: The layout engine and the bindings
         run: npm test
-  release:
-    needs: test
-    runs-on: [hanzo-build-linux-amd64]
-    env: { GH_PAT: '${{ secrets.GH_PAT }}' }
-    steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - name: Compute the next patch over the 0.1.x line
-        id: ver
+      - name: Export
+        run: npm run build
+
+      # A build that emitted no app page is a green run that publishes a blank
+      # site. Caught here rather than in a browser.
+      - name: The export is complete
+        run: |
+          set -euo pipefail
+          for f in index.html app/index.html auth/callback/index.html; do
+            [ -s "out/$f" ] || { echo "::error::missing or empty: out/$f"; exit 1; }
+          done
+
+      - name: Publish to the tabs bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.SITES_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SITES_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+            echo "::error::SITES_S3_* secrets unset — cannot sync."
+            exit 1
+          fi
+          # Assets first, HTML second, and the order is the point: the hashed
+          # _next/ files are immutable and safe to cache forever, while the HTML
+          # that names them must never be cached. Publishing the HTML first would
+          # briefly serve a page pointing at chunks that are not up yet.
+          aws s3 sync out/ "s3://${BUCKET}/" \
+            --endpoint-url https://s3.hanzo.ai --only-show-errors \
+            --exclude '*.html' --exclude '*.txt' \
+            --cache-control 'public,max-age=31536000,immutable'
+          # --delete so a page removed from the export stops being served;
+          # without it the bucket only ever grows.
+          aws s3 sync out/ "s3://${BUCKET}/" \
+            --endpoint-url https://s3.hanzo.ai --only-show-errors \
+            --delete --cache-control 'no-cache'
+
+      - name: Tag the release
         run: |
           set -euo pipefail
           git fetch --tags --force --quiet
           max="$(git tag -l 'v0.1.*' | sed 's/^v//' | sort -V | tail -1 || true)"
           [ -n "$max" ] || max="0.1.0"
-          echo "version=0.1.$(( ${max##*.} + 1 ))" >> "$GITHUB_OUTPUT"
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: hanzo-dev
-          password: ${{ secrets.GH_PAT }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ghcr.io/hanzoai/tabs:v${{ steps.ver.outputs.version }},ghcr.io/hanzoai/tabs:latest
-      - name: Tag the release
-        run: |
-          set -euo pipefail
-          git tag "v${{ steps.ver.outputs.version }}"
-          git push origin "v${{ steps.ver.outputs.version }}"
+          v="v0.1.$(( ${max##*.} + 1 ))"
+          git tag "$v"
+          git push origin "$v"
