@@ -87,3 +87,48 @@ export const DOT: Record<string, string> = {
   draining: 'bg-amber-500',
   offline: 'bg-muted-foreground/40',
 };
+
+/**
+ * The terminal readiness contract — BOTH halves, in one place.
+ *
+ * `TERM_READY` is the `source` our terminal page posts to its parent once xterm
+ * has opened (hanzo/cli `assets/term/client.js`). It lives here rather than in
+ * the component because it is a wire value shared with another repository: one
+ * side changing it silently is a workspace where every pane looks dead.
+ *
+ * The rule this enables is small and the reason for it is not. A parent cannot
+ * tell a healthy cross-origin frame from a refused one — the browser substitutes
+ * its own error document for a refusal, and BOTH throw on `contentDocument`. So
+ * a terminal is present only when it SAYS so, and every way of failing (an OAuth
+ * gate, a `frame-ancestors` refusal, a dead tunnel, an offline machine) collapses
+ * to the same silence and the same answer.
+ */
+export const TERM_READY = 'hanzo-term';
+
+/** How long a pane waits to hear from its terminal before offering the way out.
+ *  Long enough that a rescue never flashes over a terminal that is merely still
+ *  connecting, which would be its own defect. */
+export const TERM_DEADLINE = 6000;
+
+/** Whether a posted message is our terminal announcing itself. */
+export function isTermReady(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    (data as { source?: unknown }).source === TERM_READY
+  );
+}
+
+/** Panes that should show the way out: waited past the deadline, never heard from.
+ *  A pane that has not waited yet is absent, not false — it is still loading, and
+ *  nothing should be drawn over it. */
+export function rescued(
+  waited: Record<string, boolean>,
+  alive: Record<string, boolean>,
+): Record<string, boolean> {
+  return Object.fromEntries(
+    Object.keys(waited)
+      .filter((id) => waited[id])
+      .map((id) => [id, !alive[id]]),
+  );
+}

@@ -19,13 +19,14 @@
  *    an iframe, which swallows the event; the drag dies a few pixels in. A
  *    transparent overlay for the duration keeps the events on this document.
  *
- * 3. A REFUSED FRAME IS DETECTABLE, and the rescue must be ON TOP of it. The
- *    terminal's gate is hanzo.id, which sends `frame-ancestors 'none'`; the
- *    browser paints an opaque nothing. Putting the way out underneath — which is
- *    what shipped first — hid it completely: measured at eight viewports,
- *    `elementFromPoint` returned the iframe every time. A blocked frame never
- *    leaves `about:blank`, which is SAME-ORIGIN and therefore readable and empty;
- *    a frame that really loaded throws on that access. The throw is the good one.
+ * 3. A TERMINAL PROVES ITSELF; IT IS NOT INFERRED. The rescue must be ON TOP of
+ *    the frame — measured at eight viewports, `elementFromPoint` returned the
+ *    iframe every time, so a way out underneath is no way out. And WHETHER to
+ *    show it comes from the terminal saying `hanzo-term: ready`, never from
+ *    reading the frame's DOM: a gate redirect ending at hanzo.id's
+ *    `frame-ancestors 'none'` leaves `chrome-error://chromewebdata/`, which
+ *    throws on contentDocument exactly like a healthy cross-origin load. Silence
+ *    is the rescue; every way a frame can fail is the same silence.
  *
  * 4. A PHONE PAGES, IT DOES NOT TILE. 390px cannot hold two terminals and stay
  *    legible, so `pageGeometry` turns side-by-side splits into swipeable pages
@@ -50,7 +51,15 @@ import {
   stableOrder,
   stackFor,
 } from '@/lib/tiles';
-import { DOT, type Binding, mintName, shellUrl } from '@/lib/panes';
+import {
+  DOT,
+  TERM_DEADLINE,
+  type Binding,
+  isTermReady,
+  mintName,
+  rescued,
+  shellUrl,
+} from '@/lib/panes';
 
 /** A machine that can serve shells: its name and the tunnel its terminals live on. */
 export interface TerminalHost {
@@ -243,18 +252,54 @@ export function Workspace({ hosts }: { hosts: TerminalHost[] }) {
     return () => window.removeEventListener('blur', onBlur);
   }, []);
 
-  const [refused, setRefused] = useState<Record<string, boolean>>({});
-  const probe = useCallback((id: string, el: HTMLIFrameElement | null) => {
-    if (!el) return;
-    let blocked = false;
-    try {
-      const doc = el.contentDocument;
-      blocked = !!doc && (doc.body?.childElementCount ?? 0) === 0;
-    } catch {
-      blocked = false; // the throw means it genuinely loaded
-    }
-    setRefused((r) => (r[id] === blocked ? r : { ...r, [id]: blocked }));
+  // A pane shows the rescue unless ITS OWN TERMINAL SAYS IT IS THERE.
+  //
+  // Inferring this from the DOM does not work, and shipped broken twice. The
+  // guess was that a refusal stays at `about:blank` — same-origin, readable,
+  // empty — while a real load throws on contentDocument. There is a third case
+  // and it is the COMMON one: the frame follows the tunnel to its OAuth gate,
+  // the gate redirects to hanzo.id, hanzo.id sends `frame-ancestors 'none'`, and
+  // Chrome swaps in `chrome-error://chromewebdata/`. That throws exactly like a
+  // successful load, so every genuinely-blocked terminal read as fine and the
+  // user got an opaque black rectangle with no way out.
+  //
+  // So stop inferring. Our terminal page posts `hanzo-term: ready` when xterm has
+  // booted (cli/assets/term/client.js), and that message is the only thing
+  // treated as proof. Silence past the deadline is the rescue, whatever the
+  // cause — gate, CSP, dead tunnel, offline machine. One signal, one meaning, and
+  // no case analysis to get wrong the next time a browser invents a fourth way to
+  // fail.
+  const [alive, setAlive] = useState<Record<string, boolean>>({});
+  const [waited, setWaited] = useState<Record<string, boolean>>({});
+  const frames = useRef<Record<string, HTMLIFrameElement | null>>({});
+
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (!isTermReady(e.data)) return;
+      // The sender identifies the pane: a message is trusted only when it comes
+      // from the window of a frame this workspace actually rendered. The origin
+      // is not pinned because every machine publishes on its own tunnel host.
+      for (const [id, el] of Object.entries(frames.current)) {
+        if (el && e.source === el.contentWindow) {
+          setAlive((a) => (a[id] ? a : { ...a, [id]: true }));
+          return;
+        }
+      }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
   }, []);
+
+  const probe = useCallback((id: string, el: HTMLIFrameElement | null) => {
+    frames.current[id] = el;
+    if (!el) return;
+    // Give the terminal a moment to boot before calling it absent — a rescue that
+    // flashes over every pane on every load is its own defect.
+    const t = setTimeout(() => setWaited((w) => (w[id] ? w : { ...w, [id]: true })), TERM_DEADLINE);
+    return () => clearTimeout(t);
+  }, []);
+
+  const refused = useMemo(() => rescued(waited, alive), [waited, alive]);
 
   const [picking, setPicking] = useState<null | { dir: Dir | null; target: string | null }>(null);
   const rendered = useMemo(() => order.filter((id) => bind[id]), [order, bind]);
