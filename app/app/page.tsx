@@ -8,31 +8,27 @@
  * serve. No request passes through a server of ours, because there is no server
  * of ours — which is also why this page can be static.
  *
- * A token is asked for once and kept in this browser. That is the honest shape
- * for an app with no backend: there is nowhere else to put it, and inventing a
- * session store here would mean inventing a server to hold it.
+ * Sign-in is OIDC + PKCE against hanzo.id — the same identity as everything else
+ * Hanzo. A static site cannot keep a secret, so PKCE is what replaces it, and the
+ * token lives in this browser because there is nowhere else: inventing a session
+ * store would mean inventing the server this product exists without.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 import { type Machine, type Session, machines, sessions } from '@/lib/api';
+import { signIn, signOut, stored } from '@/lib/iam';
 import { Workspace, type TerminalHost } from '@/components/workspace';
-
-const TOKEN_KEY = 'hanzo.tabs.token';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
-  const [entry, setEntry] = useState('');
+  const [busy, setBusy] = useState(false);
   const [data, setData] = useState<{ m: Machine[]; s: Session[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    try {
-      setToken(window.localStorage.getItem(TOKEN_KEY));
-    } catch {
-      /* private mode: the app still works, it just asks every visit */
-    }
+    setToken(stored()?.access_token ?? null);
   }, []);
 
   const refresh = useCallback(async (t: string) => {
@@ -84,44 +80,26 @@ export default function App() {
   if (!token) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-        <h1 className="text-xl font-semibold text-neutral-50">Connect Tabs</h1>
+        <h1 className="text-xl font-semibold text-neutral-50">Sign in</h1>
         <p className="mt-2 text-sm leading-relaxed text-neutral-400">
-          Tabs has no backend, so it reads your machines directly with your own token. Paste one
-          from{' '}
-          <code className="rounded bg-neutral-900 px-1 py-0.5 text-xs text-neutral-200">
-            hanzo auth token
-          </code>
-          . It stays in this browser.
+          Tabs reads your machines with your own Hanzo identity. It has no backend, so
+          nothing about your session is stored anywhere but this browser.
         </p>
-        <form
-          className="mt-5 flex flex-col gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const t = entry.trim();
-            if (!t) return;
-            try {
-              window.localStorage.setItem(TOKEN_KEY, t);
-            } catch {
-              /* keep going: it works for this visit either way */
-            }
-            setToken(t);
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            signIn(`${window.location.origin}/auth/callback`, '/app').catch((e) => {
+              setError(e instanceof Error ? e.message : 'sign-in failed');
+              setBusy(false);
+            });
           }}
+          className="mt-5 min-h-11 rounded-lg bg-neutral-50 text-sm font-medium text-neutral-950 hover:bg-white disabled:opacity-60"
         >
-          <input
-            type="password"
-            value={entry}
-            onChange={(e) => setEntry(e.target.value)}
-            placeholder="eyJ…"
-            autoComplete="off"
-            className="min-h-11 rounded-lg border border-neutral-800 bg-neutral-950 px-3 font-mono text-sm text-neutral-100 outline-none focus:border-neutral-600"
-          />
-          <button
-            type="submit"
-            className="min-h-11 rounded-lg bg-neutral-50 text-sm font-medium text-neutral-950 hover:bg-white"
-          >
-            Connect
-          </button>
-        </form>
+          {busy ? 'Taking you to hanzo.id…' : 'Continue with Hanzo'}
+        </button>
+        {error ? <p className="mt-3 text-xs text-amber-500">{error}</p> : null}
         <Link href="/" className="mt-6 text-xs text-neutral-600 hover:text-neutral-400">
           ← What is this?
         </Link>
@@ -139,11 +117,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => {
-            try {
-              window.localStorage.removeItem(TOKEN_KEY);
-            } catch {
-              /* nothing to remove */
-            }
+            signOut();
             setToken(null);
             setData(null);
           }}
