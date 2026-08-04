@@ -18,7 +18,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 import { type Machine, type Session, machines, sessions } from '@/lib/api';
-import { session, signIn, signOut } from '@/lib/iam';
+import { renew, session, signIn, signOut } from '@/lib/iam';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
 export default function App() {
@@ -27,8 +27,17 @@ export default function App() {
   const [data, setData] = useState<{ m: Machine[]; s: Session[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The session this browser already holds, renewed if the access token has
+  // aged out. Tabs is a window you leave open all day watching agents work, so
+  // an hour-old token is the normal case on returning to the tab, not an edge
+  // one — without the renew you would be signed out every time you came back.
   useEffect(() => {
-    setToken(session().accessToken);
+    const s = session();
+    if (s.authenticated) {
+      setToken(s.accessToken);
+      return;
+    }
+    void renew().then((r) => setToken(r.accessToken));
   }, []);
 
   const refresh = useCallback(async (t: string) => {
@@ -49,7 +58,14 @@ export default function App() {
     // Machines heartbeat every 30s and the plane calls one stale after 90s, so
     // polling faster than the fact changes would only cost requests.
     const t = setInterval(() => void refresh(token), 30_000);
-    return () => clearInterval(t);
+    // Renewed on its own clock, well inside the access token's hour, so a
+    // workspace left open keeps reading the registry instead of quietly failing
+    // every poll until someone notices the panes have gone stale.
+    const r = setInterval(() => void renew().then((s) => setToken(s.accessToken)), 10 * 60_000);
+    return () => {
+      clearInterval(t);
+      clearInterval(r);
+    };
   }, [token, refresh]);
 
   /** Machines that can serve shells, and the tunnel each one's terminals live on.
