@@ -1,18 +1,31 @@
 @import "tailwindcss";
 
-/* Monochrome, and true black where the terminal is: it is the deepest surface in
-   the product and should read that way. Everything else sits above it. */
-@theme {
-  --color-background: #0a0a0a;
-  --color-surface: #111111;
-  --color-line: rgba(255, 255, 255, 0.08);
-}
+/* The Hanzo design system. Tabs declares no palette of its own.
+ *
+ * One import, after Tailwind's, and every semantic utility resolves: the
+ * tokens and the @theme bridge that maps them onto Tailwind's namespace both
+ * live in that file, so there is nothing here to keep in sync.
+ *
+ * This app is why that exists. It used to declare three tokens and use
+ * forty-one, and Tailwind v4 resolves a bare `border` to `currentColor` — so
+ * every undefined token became a stark white hairline against black and the
+ * whole product read as unfinished. An app inventing a palette is how an
+ * estate ends up with several, none of them right. */
+@import "@hanzo/design/tailwind.css";
 
-html, body { height: 100%; }
-* { -webkit-tap-highlight-color: transparent; }
+html,
+body {
+  height: 100%;
+}
+* {
+  -webkit-tap-highlight-color: transparent;
+}
 
 /* Touch targets. A bare button in this app is a real control, and a control you
    cannot reliably hit is a control that does not work. */
 @media (pointer: coarse) {
-  button, a[role="button"] { min-height: 44px; }
+  button,
+  a[role='button'] {
+    min-height: 44px;
+  }
 }
