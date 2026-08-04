@@ -17,14 +17,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
-import { type Machine, type Session, machines, sessions } from '@/lib/api';
+import {
+  type CloudMachine,
+  type Machine,
+  type Session,
+  cloudMachines,
+  launchCloudMachine,
+  machines,
+  sessions,
+} from '@/lib/api';
 import { renew, session, signIn, signOut } from '@/lib/iam';
+import { withCloud } from '@/lib/panes';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [data, setData] = useState<{ m: Machine[]; s: Session[] } | null>(null);
+  const [data, setData] = useState<{ m: Machine[]; s: Session[]; c: CloudMachine[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // The session this browser already holds, renewed if the access token has
@@ -42,8 +51,18 @@ export default function App() {
 
   const refresh = useCallback(async (t: string) => {
     try {
-      const [m, s] = await Promise.all([machines(t), sessions(t)]);
-      setData({ m, s });
+      // Two planes, and only one of them holds this page up. The registry is where
+      // machines and terminals come from; visor only knows about the boxes we
+      // launched, so provisioning being down has to cost you those and nothing
+      // else. It is caught here rather than reported here because the launch
+      // button is where a broken visor is worth saying out loud — a banner about
+      // a plane you may not be using is noise on a workspace that still works.
+      const [m, s, c] = await Promise.all([
+        machines(t),
+        sessions(t),
+        cloudMachines(t).catch(() => []),
+      ]);
+      setData({ m, s, c });
       setError(null);
     } catch (e) {
       // A registry that cannot be read is reported as such. Rendering an empty
@@ -90,7 +109,10 @@ export default function App() {
     for (const [host, url] of base) {
       if (!out.has(host)) out.set(host, { machine: host, base: url, status: 'online' });
     }
-    return [...out.values()];
+    // A box we launched exists to visor before it exists to the registry. It is
+    // merged in for that gap only, and stops being a special case the moment its
+    // own `hanzo link` registers it above.
+    return withCloud([...out.values()], data.c, (machine, status) => ({ machine, status }));
   }, [data]);
 
   if (!token) {
@@ -145,7 +167,10 @@ export default function App() {
 
       <div className="min-h-0 flex-1">
         {data ? (
-          <Workspace hosts={hosts} />
+          <Workspace
+            hosts={hosts}
+            onLaunch={() => launchCloudMachine(token).then(() => refresh(token))}
+          />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-neutral-600">
             {error ? 'The registry is unavailable.' : 'Reading your machines…'}
