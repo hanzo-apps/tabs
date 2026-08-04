@@ -34,7 +34,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Columns2, Plus, Rows2, X } from 'lucide-react';
+import { Cloud, Columns2, Plus, Rows2, X } from 'lucide-react';
 
 import {
   type Dir,
@@ -55,6 +55,7 @@ import {
   DOT,
   TERM_DEADLINE,
   type Binding,
+  isPending,
   isTermReady,
   mintName,
   rescued,
@@ -89,8 +90,21 @@ function load(): Saved | null {
   }
 }
 
-export function Workspace({ hosts }: { hosts: TerminalHost[] }) {
-  const live = useMemo(() => hosts.filter((h) => h.base && h.status !== 'offline'), [hosts]);
+export function Workspace({
+  hosts,
+  onLaunch,
+}: {
+  hosts: TerminalHost[];
+  onLaunch?: () => Promise<void>;
+}) {
+  // A box we launched is admitted before it has a tunnel. Without that it would be
+  // invisible for the minute it takes to boot and link, and a launch you cannot
+  // see is a button that looks broken. Everything else with no `base` is a machine
+  // serving no terminal, and there is nothing to open on one of those.
+  const live = useMemo(
+    () => hosts.filter((h) => (h.base || isPending(h.status)) && h.status !== 'offline'),
+    [hosts],
+  );
 
   const [tile, setTile] = useState<Tile | null>(null);
   const [bind, setBind] = useState<Record<string, Binding>>({});
@@ -306,11 +320,14 @@ export function Workspace({ hosts }: { hosts: TerminalHost[] }) {
 
   if (live.length === 0 && !tile) {
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed px-6 text-center">
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 text-center">
         <p className="max-w-sm text-sm text-muted-foreground">
           No machine is serving terminals. Run <code className="text-foreground">hanzo link</code> on
           one and it appears here.
         </p>
+        {/* The header is not rendered in this branch, and someone with no machine
+            at all is exactly who has nowhere else to get one. */}
+        {onLaunch ? <Launch run={onLaunch} /> : null}
       </div>
     );
   }
@@ -332,6 +349,7 @@ export function Workspace({ hosts }: { hosts: TerminalHost[] }) {
         >
           <Plus className="h-3.5 w-3.5" /> New shell
         </button>
+        {onLaunch ? <Launch run={onLaunch} /> : null}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           <button
             type="button"
@@ -513,6 +531,17 @@ export function Workspace({ hosts }: { hosts: TerminalHost[] }) {
                         Close pane
                       </button>
                     </div>
+                  ) : !url ? (
+                    // No tunnel to frame — a box still coming up, or a link that
+                    // stopped serving. Both mean wait, and NEITHER is the OAuth
+                    // gate: without this the pane falls through to the rescue,
+                    // which offers to sign you in to a terminal at `#`.
+                    <div className="absolute inset-0 z-10 flex items-center justify-center px-4 text-center">
+                      <p className="max-w-xs text-xs text-muted-foreground">
+                        Waiting for <span className="text-foreground">{b.shell.machine}</span> to
+                        serve a terminal. It appears here as soon as the machine links.
+                      </p>
+                    </div>
                   ) : refused[id] ? (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
                       <p className="max-w-xs text-xs text-muted-foreground">
@@ -594,6 +623,39 @@ export function Workspace({ hosts }: { hosts: TerminalHost[] }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Ask for a machine.
+ *
+ * A launch is a request in flight, and it keeps its own state because nothing
+ * else here has a reason to re-render while it is one. Failure is shown next to
+ * the button that caused it rather than banner-wide: provisioning is a second
+ * plane, and a workspace full of working terminals is not broken because it is
+ * down.
+ */
+function Launch({ run }: { run: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setFailed(null);
+          run()
+            .catch((e) => setFailed(e instanceof Error ? e.message : 'could not launch a machine'))
+            .finally(() => setBusy(false));
+        }}
+        className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
+      >
+        <Cloud className="h-3.5 w-3.5" /> {busy ? 'Starting a machine…' : 'New cloud machine'}
+      </button>
+      {failed ? <span className="truncate text-muted-foreground">{failed}</span> : null}
+    </>
   );
 }
 
