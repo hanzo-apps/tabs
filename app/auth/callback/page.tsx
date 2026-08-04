@@ -7,7 +7,7 @@ import { complete } from '@/lib/iam';
 export default function Callback() {
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    complete(window.location.search, `${window.location.origin}/auth/callback`)
+    complete()
       .then((to) => window.location.replace(to))
       .catch((e) => setError(e instanceof Error ? e.message : 'sign-in failed'));
   }, []);

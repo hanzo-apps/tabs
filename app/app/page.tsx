@@ -8,17 +8,17 @@
  * serve. No request passes through a server of ours, because there is no server
  * of ours — which is also why this page can be static.
  *
- * Sign-in is OIDC + PKCE against hanzo.id — the same identity as everything else
- * Hanzo. A static site cannot keep a secret, so PKCE is what replaces it, and the
- * token lives in this browser because there is nowhere else: inventing a session
- * store would mean inventing the server this product exists without.
+ * Sign-in is `@hanzo/iam` against hanzo.id — the same identity, and the same
+ * client, as everything else Hanzo. The token lives in this browser because
+ * there is nowhere else: inventing a session store would mean inventing the
+ * server this product exists without.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 import { type Machine, type Session, machines, sessions } from '@/lib/api';
-import { signIn, signOut, stored } from '@/lib/iam';
+import { session, signIn, signOut } from '@/lib/iam';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
 export default function App() {
@@ -28,7 +28,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setToken(stored()?.access_token ?? null);
+    setToken(session().accessToken);
   }, []);
 
   const refresh = useCallback(async (t: string) => {
@@ -90,7 +90,7 @@ export default function App() {
           disabled={busy}
           onClick={() => {
             setBusy(true);
-            signIn(`${window.location.origin}/auth/callback`, '/app').catch((e) => {
+            signIn('/app').catch((e) => {
               setError(e instanceof Error ? e.message : 'sign-in failed');
               setBusy(false);
             });
@@ -117,7 +117,7 @@ export default function App() {
         <button
           type="button"
           onClick={() => {
-            signOut();
+            void signOut();
             setToken(null);
             setData(null);
           }}
