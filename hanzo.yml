@@ -1,0 +1,19 @@
+# Canonical CI/CD config for hanzoai/tabs — the one file both the hanzoai/ci
+# reusable (.hanzo/workflows/cicd.yml) and platform.hanzo.ai read.
+#
+# @hanzo/tabs is a Next app that is published as a package rather than deployed
+# from this repo, so no `images:` and no `deploy:`.
+#
+# The gate is typecheck plus the jest suite. That suite is deliberately narrow
+# and says so in its own config — "pure logic only: the layout tree and the
+# shell bindings; everything that needs a browser is verified against a real
+# one" — so panes/tiles assert the split arithmetic that browser tests would
+# only observe indirectly. Between the two, a type error anywhere in app/ or
+# components/ and a layout-tree regression are both red.
+test:
+  - name: build
+    run: |
+      set -e
+      npm ci
+      npm run typecheck
+      npm test
