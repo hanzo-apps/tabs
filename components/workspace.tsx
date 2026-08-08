@@ -67,6 +67,9 @@ export interface TerminalHost {
   machine: string;
   /** The share URL `hanzo link` published. Absent ⇒ nothing to frame. */
   base?: string;
+  /** A dev sandbox's id. Its terminal URL is MINTED per open (single-use
+   *  ticket) rather than published, so a sandbox host has this and no base. */
+  sandbox?: string;
   status: string;
   label?: string;
 }
@@ -92,17 +95,22 @@ function load(): Saved | null {
 
 export function Workspace({
   hosts,
+  mint,
   onLaunch,
 }: {
   hosts: TerminalHost[];
+  /** A fresh framed-terminal URL for a sandbox pane. The caller owns the
+   *  credential; the workspace only ever holds the minted, ticket-bearing URL. */
+  mint?: (sandbox: string, shell: string) => Promise<string>;
   onLaunch?: () => Promise<void>;
 }) {
   // A box we launched is admitted before it has a tunnel. Without that it would be
   // invisible for the minute it takes to boot and link, and a launch you cannot
   // see is a button that looks broken. Everything else with no `base` is a machine
-  // serving no terminal, and there is nothing to open on one of those.
+  // serving no terminal, and there is nothing to open on one of those — except a
+  // sandbox, whose URL is minted on bind rather than published.
   const live = useMemo(
-    () => hosts.filter((h) => (h.base || isPending(h.status)) && h.status !== 'offline'),
+    () => hosts.filter((h) => (h.base || h.sandbox || isPending(h.status)) && h.status !== 'offline'),
     [hosts],
   );
 
@@ -318,6 +326,42 @@ export function Workspace({
   const [picking, setPicking] = useState<null | { dir: Dir | null; target: string | null }>(null);
   const rendered = useMemo(() => order.filter((id) => bind[id]), [order, bind]);
 
+  // Sandbox panes: the URL is minted, not published. Minted per PANE and kept
+  // until that pane reconnects — a ticket is spent by the frame's first load,
+  // so re-deriving the URL on render would hand the iframe a dead credential.
+  // In-flight ids are tracked outside state so a re-render mid-mint cannot
+  // start a second mint for the same pane (two tickets, one wasted).
+  const [minted, setMinted] = useState<Record<string, string>>({});
+  const minting = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!mint) return;
+    for (const id of rendered) {
+      const b = bind[id];
+      if (!b || b.kind !== 'shell') continue;
+      const h = hostOf(b.shell.machine);
+      if (!h?.sandbox || minted[id] || minting.current.has(id)) continue;
+      minting.current.add(id);
+      mint(h.sandbox, b.shell.name)
+        .then((src) => setMinted((m) => ({ ...m, [id]: src })))
+        // A failed mint leaves the pane on its "waiting" face; the deadline
+        // then offers reconnect, which is the retry.
+        .catch(() => {})
+        .finally(() => minting.current.delete(id));
+    }
+  }, [rendered, bind, hostOf, mint, minted]);
+
+  /** Reconnect a sandbox pane: forget the spent URL and the frame's history so
+   *  the mint effect runs again with a fresh ticket and the deadline re-arms. */
+  const reconnect = useCallback((id: string) => {
+    const drop = <T,>(o: Record<string, T>): Record<string, T> => {
+      const { [id]: _gone, ...rest } = o;
+      return rest;
+    };
+    setMinted(drop);
+    setAlive(drop);
+    setWaited(drop);
+  }, []);
+
   if (live.length === 0 && !tile) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 text-center">
@@ -423,7 +467,15 @@ export function Workspace({
             const on = id === focus;
             const shell = b.kind === 'empty' ? null : b.shell;
             const host = shell ? hostOf(shell.machine) : undefined;
-            const url = host?.base && shell ? shellUrl(host.base, shell.name) : null;
+            // A sandbox pane frames its minted, ticket-bearing URL; a linked
+            // machine's pane derives from the published tunnel. `minted` is
+            // per-pane state because the ticket is spent on first load —
+            // deriving would re-spend it every render.
+            const url = host?.sandbox
+              ? (minted[id] ?? null)
+              : host?.base && shell
+                ? shellUrl(host.base, shell.name)
+                : null;
             // Every rect is page-relative; the track is `pages * 100%` wide, so a
             // page occupies `100/pages` of it.
             const left = paging ? r.left / pages : r.left;
@@ -543,6 +595,25 @@ export function Workspace({
                       </p>
                     </div>
                   ) : refused[id] ? (
+                    host?.sandbox ? (
+                      // A sandbox frame that never said ready is a spent or
+                      // expired ticket — the URL cannot be reopened, only
+                      // re-minted. Never the sign-in tab here: the ticket IS
+                      // the sign-in, and opening a dead one teaches nothing.
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
+                        <p className="max-w-xs text-xs text-muted-foreground">
+                          The terminal did not come up. Its ticket lasts thirty seconds —
+                          reconnecting mints a fresh one.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => reconnect(id)}
+                          className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm text-foreground hover:bg-muted"
+                        >
+                          Reconnect
+                        </button>
+                      </div>
+                    ) : (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
                       <p className="max-w-xs text-xs text-muted-foreground">
                         This terminal needs a one-time sign-in on its own domain. The gate refuses
@@ -557,6 +628,7 @@ export function Workspace({
                         Sign in to this terminal ↗
                       </a>
                     </div>
+                    )
                   ) : null}
                 </div>
               </div>
