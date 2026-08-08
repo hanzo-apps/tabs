@@ -20,11 +20,15 @@ import Link from 'next/link';
 import {
   type CloudMachine,
   type Machine,
+  type SandboxMachine,
   type Session,
   cloudMachines,
   launchCloudMachine,
   machines,
+  sandboxes,
+  sandboxTerminal,
   sessions,
+  terminalTicket,
 } from '@/lib/api';
 import { renew, session, signIn, signOut } from '@/lib/iam';
 import { withCloud } from '@/lib/panes';
@@ -33,7 +37,12 @@ import { Workspace, type TerminalHost } from '@/components/workspace';
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [data, setData] = useState<{ m: Machine[]; s: Session[]; c: CloudMachine[] } | null>(null);
+  const [data, setData] = useState<{
+    m: Machine[];
+    s: Session[];
+    c: CloudMachine[];
+    b: SandboxMachine[];
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // The session this browser already holds, renewed if the access token has
@@ -57,12 +66,15 @@ export default function App() {
       // else. It is caught here rather than reported here because the launch
       // button is where a broken visor is worth saying out loud — a banner about
       // a plane you may not be using is noise on a workspace that still works.
-      const [m, s, c] = await Promise.all([
+      const [m, s, c, b] = await Promise.all([
         machines(t),
         sessions(t),
         cloudMachines(t).catch(() => []),
+        // The builder's pods. A third plane with the same posture as visor:
+        // its absence costs you those panes and nothing else.
+        sandboxes(t).catch(() => []),
       ]);
-      setData({ m, s, c });
+      setData({ m, s, c, b });
       setError(null);
     } catch (e) {
       // A registry that cannot be read is reported as such. Rendering an empty
@@ -109,11 +121,31 @@ export default function App() {
     for (const [host, url] of base) {
       if (!out.has(host)) out.set(host, { machine: host, base: url, status: 'online' });
     }
+    // The builder's sandboxes. A sandbox has no tunnel to publish — its
+    // terminal URL is MINTED per open (single-use ticket), so the host carries
+    // the sandbox id instead of a base and the workspace mints when a pane
+    // binds. One live sandbox per project is the server's rule, so the project
+    // name is a stable, unique machine name.
+    for (const s of data.b) {
+      const key = s.project || `box-${s.id.slice(0, 6)}`;
+      if (!out.has(key)) out.set(key, { machine: key, sandbox: s.id, status: 'online' });
+    }
     // A box we launched exists to visor before it exists to the registry. It is
     // merged in for that gap only, and stops being a special case the moment its
     // own `hanzo link` registers it above.
     return withCloud([...out.values()], data.c, (machine, status) => ({ machine, status }));
   }, [data]);
+
+  /** A fresh framed-terminal URL for a sandbox pane — ticket minted here, where
+   *  the token lives, so the workspace stays credential-free. */
+  const mint = useCallback(
+    async (sandbox: string, shell: string) => {
+      if (!token) throw new Error('signed out');
+      const ticket = await terminalTicket(token, sandbox);
+      return sandboxTerminal(sandbox, ticket, shell);
+    },
+    [token],
+  );
 
   if (!token) {
     return (
@@ -169,6 +201,7 @@ export default function App() {
         {data ? (
           <Workspace
             hosts={hosts}
+            mint={mint}
             onLaunch={() => launchCloudMachine(token).then(() => refresh(token))}
           />
         ) : (

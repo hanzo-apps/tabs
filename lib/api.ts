@@ -107,3 +107,46 @@ export const launchCloudMachine = (token: string, name?: string) =>
     method: 'POST',
     body: JSON.stringify({ kind: 'tab', name: name || undefined }),
   });
+
+/**
+ * Dev sandboxes — the third kind of machine, and the ONE terminal contract.
+ *
+ * The builder's pods (hanzo.app, console.hanzo.ai) serve the same framed
+ * terminal every other surface uses: cloud hosts the whole emulator page at
+ * /v1/sandboxes/:id/terminal, and the URL's only credential is a single-use,
+ * thirty-second ticket. So a sandbox joins this workspace with no new pane
+ * kind — it is a machine whose terminal URL is MINTED per open instead of
+ * published by `hanzo link`, and `?arg=` names the tmux session exactly as a
+ * linked machine's ttyd does.
+ */
+export interface SandboxMachine {
+  id: string;
+  status: string;
+  project?: string;
+}
+
+export const sandboxes = (token: string) =>
+  read<{ sandboxes?: SandboxMachine[] }>('/v1/sandboxes?status=running', token).then((r) =>
+    (r.sandboxes ?? []).filter((s) => s.status === 'running'),
+  );
+
+/** Mint the single-use ticket for a sandbox's terminal. Spent on first use. */
+export const terminalTicket = async (token: string, id: string): Promise<string> => {
+  const res = await fetch(`${API}/v1/sandboxes/${encodeURIComponent(id)}/terminal/ticket`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`terminal ticket → ${res.status}`);
+  const body = (await res.json()) as { ticket?: string };
+  if (!body.ticket) throw new Error('terminal ticket → empty answer');
+  return body.ticket;
+};
+
+/** The framed terminal's address — ticket in the URL, bearer never. */
+export function sandboxTerminal(id: string, ticket: string, name: string): string {
+  return (
+    `${API}/v1/sandboxes/${encodeURIComponent(id)}/terminal` +
+    `?ticket=${encodeURIComponent(ticket)}&arg=${encodeURIComponent(name)}`
+  );
+}
