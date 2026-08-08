@@ -47,15 +47,45 @@ jobs:
           done
 
       - name: Publish to the tabs bucket
+        # The credential comes from KMS, not from repo secrets. `SITES_S3_*` —
+        # the names this used to read — are in no org and in no KMS project, so
+        # the step failed closed on every run since it was written and tabs could
+        # only be updated by hand. Same pair the serving pod reads (k8s secret
+        # `s3-credentials`), so CI and the server agree on one identity.
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.SITES_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.SITES_S3_SECRET_ACCESS_KEY }}
+          KMS_CLIENT_ID: ${{ secrets.KMS_CLIENT_ID }}
+          KMS_CLIENT_SECRET: ${{ secrets.KMS_CLIENT_SECRET }}
+          KMS_ENDPOINT: ${{ vars.KMS_ENDPOINT || 'https://kms.hanzo.ai' }}
+          KMS_SECRET_ENV: ${{ vars.KMS_SECRET_ENV || 'prod' }}
         run: |
           set -euo pipefail
-          if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-            echo "::error::SITES_S3_* secrets unset — cannot sync."
+          # The org rides the TOKEN, so the secret path is flat. An org-segmented
+          # /v1/kms/orgs/<org>/secrets/... answers 404, and `curl -fsS` reports
+          # that as a bare exit 22 that `set -e` turns into a step death with no
+          # message naming which call failed.
+          KMS_TOKEN=$(curl -fsS "${KMS_ENDPOINT}/v1/kms/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "{\"clientId\":\"${KMS_CLIENT_ID}\",\"clientSecret\":\"${KMS_CLIENT_SECRET}\"}" \
+            | jq -r '.accessToken // empty')
+          [ -n "$KMS_TOKEN" ] || { echo "::error::KMS login failed at ${KMS_ENDPOINT} — check KMS_CLIENT_ID/KMS_CLIENT_SECRET on this org"; exit 1; }
+          kms() { curl -fsS "${KMS_ENDPOINT}/v1/kms/secrets/s3-credentials/$1?env=${KMS_SECRET_ENV}" -H "Authorization: Bearer ${KMS_TOKEN}" | jq -r '.value // empty'; }
+          AWS_ACCESS_KEY_ID=$(kms access-key)
+          AWS_SECRET_ACCESS_KEY=$(kms secret-key)
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::error::s3-credentials/{access-key,secret-key} missing in KMS (env ${KMS_SECRET_ENV}) — cannot sync."
             exit 1
           fi
+          echo "::add-mask::${AWS_ACCESS_KEY_ID}"
+          echo "::add-mask::${AWS_SECRET_ACCESS_KEY}"
+          export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
+          # The runner image ships no aws CLI and nothing in the reusable
+          # provisions one, so install it here or the step dies `aws: command
+          # not found` (exit 127) with a perfectly good credential in hand.
+          command -v aws > /dev/null 2>&1 || {
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq awscli
+          }
+          aws --version
           # Assets first, HTML second, and the order is the point: the hashed
           # _next/ files are immutable and safe to cache forever, while the HTML
           # that names them must never be cached. Publishing the HTML first would
@@ -79,3 +109,4 @@ jobs:
           v="v0.1.$(( ${max##*.} + 1 ))"
           git tag "$v"
           git push origin "$v"
+
