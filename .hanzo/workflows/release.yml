@@ -81,10 +81,19 @@ jobs:
           # The runner image ships no aws CLI and nothing in the reusable
           # provisions one, so install it here or the step dies `aws: command
           # not found` (exit 127) with a perfectly good credential in hand.
-          command -v aws > /dev/null 2>&1 || {
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq awscli
-          }
+          #
+          # NOT apt: noble keeps awscli in universe, which is not enabled on
+          # these runners — `apt-get install awscli` answers "Package 'awscli'
+          # has no installation candidate", which reads like a typo rather than a
+          # disabled component. AWS's own installer needs no repo and no sudo
+          # when pointed at a user prefix, and gives v2, which is what the sync
+          # flags below assume.
+          if ! command -v aws > /dev/null 2>&1; then
+            curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+            unzip -q -o /tmp/awscliv2.zip -d /tmp
+            /tmp/aws/install -i "$HOME/.awscli" -b "$HOME/.local/bin" --update
+            export PATH="$HOME/.local/bin:$PATH"
+          fi
           aws --version
           # Assets first, HTML second, and the order is the point: the hashed
           # _next/ files are immutable and safe to cache forever, while the HTML
@@ -109,4 +118,5 @@ jobs:
           v="v0.1.$(( ${max##*.} + 1 ))"
           git tag "$v"
           git push origin "$v"
+
 
