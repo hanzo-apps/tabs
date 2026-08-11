@@ -34,7 +34,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Cloud, Columns2, Monitor, Plus, Rows2, X } from 'lucide-react';
+import { Cloud, Columns2, Loader2, Monitor, Plus, Rows2, X } from 'lucide-react';
 
 import {
   type Dir,
@@ -60,6 +60,7 @@ import {
   machineOf,
   mintName,
   rescued,
+  restore,
   shellUrl,
 } from '@/lib/panes';
 
@@ -139,11 +140,12 @@ export function Workspace({
       const known = new Set(live.map((h) => h.machine));
       setBind(
         Object.fromEntries(
-          Object.entries(saved.bind).map(([id, b]) =>
+          Object.entries(saved.bind).map(([id, b]) => [
+            id,
             b.kind === 'shell' && !known.has(b.shell.machine)
-              ? [id, { kind: 'gone', shell: b.shell } as Binding]
-              : [id, b],
-          ),
+              ? ({ kind: 'gone', shell: b.shell } as Binding)
+              : restore(b),
+          ]),
         ),
       );
       setTile(saved.tree);
@@ -202,24 +204,45 @@ export function Workspace({
   );
   const screenOn = useCallback((machine: string): Binding => ({ kind: 'screen', machine }), []);
 
-  /** Open a NEW pane showing `what`, beside `target` — or as the whole layout. */
+  /** Open a NEW pane showing `what`, beside `target` — or as the whole layout.
+   *  Answers with the pane's id, so a caller still waiting on what goes in it
+   *  can settle that one box later. */
   const open = useCallback((what: Binding, dir: Dir | null, target: string | null) => {
     const id = `p${seq.current++}`;
     setBind((b) => ({ ...b, [id]: what }));
     setTile((t) => (t && target && dir ? splitPane(t, target, dir, id) : (t ?? pane(id))));
     setFocus(id);
+    return id;
+  }, []);
+
+  /** Put `what` in a pane that is still open. A pane closed while its machine
+   *  was starting stays closed — an answer arriving late must not reopen a box
+   *  someone shut. */
+  const settle = useCallback((id: string, what: Binding) => {
+    setBind((b) => (b[id] ? { ...b, [id]: what } : b));
   }, []);
 
   /** Start a machine and open it. The point of the button is what you get to
    *  look at: a machine that arrives with nothing framed on it is a row in a
    *  list, and you would have to go and ask for the thing you already asked for. */
   const launch = useCallback(
-    async (kind: 'dev' | 'desktop') => {
+    (kind: 'dev' | 'desktop') => {
       if (!onLaunch) return;
-      const machine = await onLaunch(kind);
-      open(kind === 'desktop' ? screenOn(machine) : shellOn(machine), focus ? 'row' : null, focus);
+      const want = kind === 'desktop' ? 'screen' : 'shell';
+      // The pane opens on the CLICK, not on the answer. Provisioning is the
+      // long part, so waiting for it before drawing anything is a workspace
+      // that sits unchanged for the whole minute you are waiting.
+      const id = open({ kind: 'starting', want }, focus ? 'row' : null, focus);
+      onLaunch(kind)
+        .then((machine) => settle(id, want === 'screen' ? screenOn(machine) : shellOn(machine)))
+        .catch((e) =>
+          settle(id, {
+            kind: 'failed',
+            why: e instanceof Error ? e.message : 'could not start a machine',
+          }),
+        );
     },
-    [onLaunch, open, focus, shellOn, screenOn],
+    [onLaunch, open, settle, focus, shellOn, screenOn],
   );
 
   const doClose = useCallback((id: string) => {
@@ -410,8 +433,8 @@ export function Workspace({
             at all is exactly who has nowhere else to get one. */}
         {onLaunch ? (
           <div className="flex items-center gap-1.5 text-xs">
-            <Launch run={() => launch('dev')} icon={<Cloud className="h-3.5 w-3.5" />} label="New cloud machine" busyLabel="Starting a machine…" />
-            <Launch run={() => launch('desktop')} icon={<Monitor className="h-3.5 w-3.5" />} label="New desktop" busyLabel="Starting a desktop…" />
+            <Act run={() => launch('dev')} icon={<Cloud className="h-3.5 w-3.5" />} label="New cloud machine" />
+            <Act run={() => launch('desktop')} icon={<Monitor className="h-3.5 w-3.5" />} label="New desktop" />
           </div>
         ) : null}
       </div>
@@ -437,31 +460,27 @@ export function Workspace({
     <div className="flex h-full w-full flex-col gap-2">
       {/* One row. Actions, not a status report. */}
       <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <button
-          type="button"
-          onClick={() => openShell(focus ? 'row' : null, focus)}
-          className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted"
-        >
-          <Plus className="h-3.5 w-3.5" /> New shell
-        </button>
+        <Act
+          run={() => openShell(focus ? 'row' : null, focus)}
+          icon={<Plus className="h-3.5 w-3.5" />}
+          label="New shell"
+        />
         {/* One button for the screen, whether or not a machine with one exists
             yet: with a desktop live it opens it, without one it starts it. The
             alternative — a disabled button beside a second button that makes it
             work — is two controls for one intention. */}
         {watchable.length || onLaunch ? (
-          <Launch
-            run={async () => openScreen(focus ? 'row' : null, focus)}
+          <Act
+            run={() => openScreen(focus ? 'row' : null, focus)}
             icon={<Monitor className="h-3.5 w-3.5" />}
             label="Desktop"
-            busyLabel="Starting a desktop…"
           />
         ) : null}
         {onLaunch ? (
-          <Launch
+          <Act
             run={() => launch('dev')}
             icon={<Cloud className="h-3.5 w-3.5" />}
             label="New cloud machine"
-            busyLabel="Starting a machine…"
           />
         ) : null}
         <span className="ml-auto flex shrink-0 items-center gap-1">
@@ -643,6 +662,28 @@ export function Workspace({
                         onCancel={() => doClose(id)}
                       />
                     </div>
+                  ) : b.kind === 'starting' ? (
+                    // The loader lives HERE, in the box the machine is for —
+                    // not on the button that asked. It is what tells you the
+                    // click landed, and it is where the terminal appears.
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      <p className="max-w-xs text-xs text-muted-foreground">
+                        Starting {b.want === 'screen' ? 'a desktop' : 'a machine'}. Its{' '}
+                        {b.want === 'screen' ? 'screen' : 'terminal'} opens here.
+                      </p>
+                    </div>
+                  ) : b.kind === 'failed' ? (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                      <p className="max-w-xs text-xs text-muted-foreground">{b.why}</p>
+                      <button
+                        type="button"
+                        onClick={() => doClose(id)}
+                        className="min-h-9 rounded-md border border-border px-3 text-xs hover:bg-muted"
+                      >
+                        Close pane
+                      </button>
+                    </div>
                   ) : b.kind === 'gone' ? (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
                       <p className="text-xs text-muted-foreground">
@@ -775,45 +816,22 @@ export function Workspace({
 }
 
 /**
- * Ask for a machine.
+ * One labelled button in the action row.
  *
- * A launch is a request in flight, and it keeps its own state because nothing
- * else here has a reason to re-render while it is one. Failure is shown next to
- * the button that caused it rather than banner-wide: provisioning is a second
- * plane, and a workspace full of working terminals is not broken because it is
- * down.
+ * It carries no busy state and no failure of its own, and that is the point: a
+ * button that asks for a machine opens the pane the machine is for, so the wait
+ * and the reason it failed both belong to that pane. Keeping a spinner here too
+ * would say the same thing twice, in the one place you are not looking.
  */
-function Launch({
-  run,
-  icon,
-  label,
-  busyLabel,
-}: {
-  run: () => Promise<void>;
-  icon: React.ReactNode;
-  label: string;
-  busyLabel: string;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
+function Act({ run, icon, label }: { run: () => void; icon: React.ReactNode; label: string }) {
   return (
-    <>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          setFailed(null);
-          run()
-            .catch((e) => setFailed(e instanceof Error ? e.message : 'could not launch a machine'))
-            .finally(() => setBusy(false));
-        }}
-        className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
-      >
-        {icon} {busy ? busyLabel : label}
-      </button>
-      {failed ? <span className="truncate text-muted-foreground">{failed}</span> : null}
-    </>
+    <button
+      type="button"
+      onClick={run}
+      className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted"
+    >
+      {icon} {label}
+    </button>
   );
 }
 
