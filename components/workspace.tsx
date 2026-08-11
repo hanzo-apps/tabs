@@ -55,7 +55,6 @@ import {
   DOT,
   TERM_DEADLINE,
   type Binding,
-  isPending,
   isTermReady,
   mintName,
   rescued,
@@ -102,15 +101,14 @@ export function Workspace({
   /** A fresh framed-terminal URL for a sandbox pane. The caller owns the
    *  credential; the workspace only ever holds the minted, ticket-bearing URL. */
   mint?: (sandbox: string, shell: string) => Promise<string>;
-  onLaunch?: () => Promise<void>;
+  /** Start a cloud machine, and answer the name it goes by here. */
+  onLaunch?: () => Promise<string>;
 }) {
-  // A box we launched is admitted before it has a tunnel. Without that it would be
-  // invisible for the minute it takes to boot and link, and a launch you cannot
-  // see is a button that looks broken. Everything else with no `base` is a machine
-  // serving no terminal, and there is nothing to open on one of those — except a
-  // sandbox, whose URL is minted on bind rather than published.
+  // A machine with no `base` serves no terminal, and there is nothing to open on
+  // one of those — except a sandbox, whose URL is minted on bind rather than
+  // published.
   const live = useMemo(
-    () => hosts.filter((h) => (h.base || h.sandbox || isPending(h.status)) && h.status !== 'offline'),
+    () => hosts.filter((h) => (h.base || h.sandbox) && h.status !== 'offline'),
     [hosts],
   );
 
@@ -193,6 +191,14 @@ export function Workspace({
     },
     [takenOn],
   );
+
+  /** Start a machine and open its first shell. The point of the button is the
+   *  terminal: a machine that arrives with nothing framed on it is a row in a
+   *  list, and you would have to go and ask for the shell you already asked for. */
+  const launch = useCallback(async () => {
+    if (!onLaunch) return;
+    open(await onLaunch(), focus ? 'row' : null, focus);
+  }, [onLaunch, open, focus]);
 
   const doClose = useCallback((id: string) => {
     setTile((t) => (t ? closePane(t, id) : null));
@@ -371,7 +377,7 @@ export function Workspace({
         </p>
         {/* The header is not rendered in this branch, and someone with no machine
             at all is exactly who has nowhere else to get one. */}
-        {onLaunch ? <Launch run={onLaunch} /> : null}
+        {onLaunch ? <Launch run={launch} /> : null}
       </div>
     );
   }
@@ -393,7 +399,7 @@ export function Workspace({
         >
           <Plus className="h-3.5 w-3.5" /> New shell
         </button>
-        {onLaunch ? <Launch run={onLaunch} /> : null}
+        {onLaunch ? <Launch run={launch} /> : null}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           <button
             type="button"

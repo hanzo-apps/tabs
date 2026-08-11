@@ -3,12 +3,10 @@ import {
   DOT,
   TERM_DEADLINE,
   TERM_READY,
-  isPending,
   isTermReady,
   mintName,
   rescued,
   safeName,
-  withCloud,
   shellUrl,
 } from '@/lib/panes';
 
@@ -113,53 +111,5 @@ describe('a terminal announces itself, and silence is the rescue', () => {
 
   it('waits long enough that a slow connect is not called dead', () => {
     expect(TERM_DEADLINE).toBeGreaterThanOrEqual(3000);
-  });
-});
-
-/**
- * A cloud box is a machine that happens to have been started by us. It arrives
- * through the ordinary registry the moment it links, so the only job here is the
- * gap before that — and the only rule is that the registry wins.
- */
-describe('a launched box is an ordinary machine', () => {
-  const make = (machine: string, status: string) => ({ machine, status });
-
-  it('shows a box that has not linked yet, so the launch is visible', () => {
-    expect(withCloud([], [{ name: 'cloud-1', state: 'new' }], make)).toEqual([
-      { machine: 'cloud-1', status: 'starting' },
-    ]);
-  });
-
-  it('lets the registry win once the box really registers', () => {
-    // The registry knows a terminal is being served; visor only knows what the
-    // provider was told. A duplicate pane for one box is the bug this prevents.
-    const live = [{ machine: 'cloud-1', status: 'online', base: 'https://x.share.hanzo.ai' }];
-    expect(withCloud(live, [{ name: 'cloud-1', state: 'active' }], make)).toEqual(live);
-  });
-
-  it('never offers a box the provider has destroyed', () => {
-    expect(withCloud([], [{ name: 'gone', state: 'destroyed' }], make)).toEqual([]);
-  });
-
-  it('keeps linked machines untouched', () => {
-    const live = [{ machine: 'ra', status: 'online' }];
-    expect(withCloud(live, [], make)).toEqual(live);
-  });
-
-  it('is pending exactly while it has no tunnel', () => {
-    // What the workspace admits without a `base`. Widening this to any status it
-    // does not recognise would let a linked machine serving no terminal be opened
-    // into a pane that waits forever.
-    expect(isPending('starting')).toBe(true);
-    expect(isPending('linking')).toBe(true);
-    expect(isPending('online')).toBe(false);
-    expect(isPending('offline')).toBe(false);
-  });
-
-  it('never reads as dead while it is coming up', () => {
-    // `draining` fell through to the offline grey once and a drained box read as
-    // dead. A booting one fails the same way if these are absent.
-    expect(DOT.starting).toBe(DOT.paused);
-    expect(DOT.linking).toBe(DOT.paused);
   });
 });

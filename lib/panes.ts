@@ -72,14 +72,12 @@ export function shellUrl(base: string, name: string): string {
   }
 }
 
-/** Status → dot. The ONE map: session statuses first, then a machine's, then the
- *  two `withCloud` mints below for a box that has not linked yet.
+/** Status → dot. The ONE map: session statuses first, then a machine's.
  *
  * `online | offline | draining` is exactly what the control plane sends
  * (agents.TargetOnline/Offline/Draining). `busy` was here once and is sent by
  * nothing; `draining` was missing and fell through to the offline grey, so a box
- * being deliberately drained read as dead. A booting box would read as dead the
- * same way, which is why `starting` and `linking` are amber here and not absent. */
+ * being deliberately drained read as dead. */
 export const DOT: Record<string, string> = {
   running: 'bg-emerald-500',
   paused: 'bg-amber-500',
@@ -88,8 +86,6 @@ export const DOT: Record<string, string> = {
   online: 'bg-emerald-500',
   draining: 'bg-amber-500',
   offline: 'bg-muted-foreground/40',
-  starting: 'bg-amber-500',
-  linking: 'bg-amber-500',
 };
 
 /**
@@ -137,38 +133,3 @@ export function rescued(
   );
 }
 
-/**
- * Cloud boxes, as ordinary machines.
- *
- * A launched box runs `hanzo link` exactly as a laptop does, so once it is up it
- * arrives through the SAME registry as everything else and needs nothing here. It
- * is only in the gap — launched, booting, not yet linked — that it exists to
- * visor and not to the registry, and a box you are waiting on has to be visible
- * or the launch button looks broken.
- *
- * So it is merged BY HOST and the registry wins: the moment the real machine
- * registers, its own entry replaces the placeholder and there is nothing left of
- * this. That direction matters — the registry knows whether a terminal is
- * actually being served, and visor only knows what the provider was told.
- */
-export function withCloud<T extends { machine: string; status: string; base?: string }>(
-  live: T[],
-  cloud: { name: string; state?: string }[],
-  make: (name: string, status: string) => T,
-): T[] {
-  const known = new Set(live.map((h) => h.machine));
-  const booting = cloud
-    .filter((m) => m.name && !known.has(m.name))
-    // A destroyed box is not a pending one. Anything the provider calls off is
-    // simply gone, and showing it would be a machine you can never open.
-    .filter((m) => !/destroy|delete|terminat|archiv/i.test(m.state ?? ''))
-    .map((m) => make(m.name, /active|running/i.test(m.state ?? '') ? 'linking' : 'starting'));
-  return [...live, ...booting];
-}
-
-/** Whether a machine is one of the boxes above: on its way up, so it has no
- *  tunnel yet. The workspace has to let you open a pane on one anyway — the pane
- *  is where you watch it come up, and it turns into a terminal with nothing
- *  moving — so this is what tells it apart from a linked machine that simply
- *  serves no terminal, which there would be nothing to open. */
-export const isPending = (status: string) => status === 'starting' || status === 'linking';

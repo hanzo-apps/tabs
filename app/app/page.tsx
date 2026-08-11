@@ -18,12 +18,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 
 import {
-  type CloudMachine,
   type Machine,
   type SandboxMachine,
   type Session,
-  cloudMachines,
-  launchCloudMachine,
+  createSandbox,
+  machineName,
   machines,
   sandboxes,
   sandboxTerminal,
@@ -31,7 +30,6 @@ import {
   terminalTicket,
 } from '@/lib/api';
 import { renew, session, signIn, signOut } from '@/lib/iam';
-import { withCloud } from '@/lib/panes';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
 export default function App() {
@@ -40,7 +38,6 @@ export default function App() {
   const [data, setData] = useState<{
     m: Machine[];
     s: Session[];
-    c: CloudMachine[];
     b: SandboxMachine[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,21 +57,18 @@ export default function App() {
 
   const refresh = useCallback(async (t: string) => {
     try {
-      // Two planes, and only one of them holds this page up. The registry is where
-      // machines and terminals come from; visor only knows about the boxes we
-      // launched, so provisioning being down has to cost you those and nothing
-      // else. It is caught here rather than reported here because the launch
-      // button is where a broken visor is worth saying out loud — a banner about
-      // a plane you may not be using is noise on a workspace that still works.
-      const [m, s, c, b] = await Promise.all([
+      // The registry is where machines and terminals come from, and it is what
+      // holds this page up. Sandboxes are a SECOND read against the same plane:
+      // caught here rather than reported, because their absence costs you those
+      // panes and nothing else, and a banner about boxes you may not have is
+      // noise on a workspace that still works. It is worth saying out loud at
+      // the launch button, which is the one place it stops you.
+      const [m, s, b] = await Promise.all([
         machines(t),
         sessions(t),
-        cloudMachines(t).catch(() => []),
-        // The builder's pods. A third plane with the same posture as visor:
-        // its absence costs you those panes and nothing else.
         sandboxes(t).catch(() => []),
       ]);
-      setData({ m, s, c, b });
+      setData({ m, s, b });
       setError(null);
     } catch (e) {
       // A registry that cannot be read is reported as such. Rendering an empty
@@ -121,19 +115,16 @@ export default function App() {
     for (const [host, url] of base) {
       if (!out.has(host)) out.set(host, { machine: host, base: url, status: 'online' });
     }
-    // The builder's sandboxes. A sandbox has no tunnel to publish — its
-    // terminal URL is MINTED per open (single-use ticket), so the host carries
-    // the sandbox id instead of a base and the workspace mints when a pane
-    // binds. One live sandbox per project is the server's rule, so the project
-    // name is a stable, unique machine name.
+    // The sandboxes. A sandbox has no tunnel to publish — its terminal URL is
+    // MINTED per open (single-use ticket), so the host carries the sandbox id
+    // instead of a base and the workspace mints when a pane binds. One live
+    // sandbox per project is the server's rule, so the project name is a
+    // stable, unique machine name.
     for (const s of data.b) {
-      const key = s.project || `box-${s.id.slice(0, 6)}`;
+      const key = machineName(s);
       if (!out.has(key)) out.set(key, { machine: key, sandbox: s.id, status: 'online' });
     }
-    // A box we launched exists to visor before it exists to the registry. It is
-    // merged in for that gap only, and stops being a special case the moment its
-    // own `hanzo link` registers it above.
-    return withCloud([...out.values()], data.c, (machine, status) => ({ machine, status }));
+    return [...out.values()];
   }, [data]);
 
   /** A fresh framed-terminal URL for a sandbox pane — ticket minted here, where
@@ -202,7 +193,15 @@ export default function App() {
           <Workspace
             hosts={hosts}
             mint={mint}
-            onLaunch={() => launchCloudMachine(token).then(() => refresh(token))}
+            // Started, then read back, then named — in that order. The workspace
+            // opens a shell on the name it gets, and a pane can only mint a
+            // ticket for a machine the registry has already handed back, so the
+            // refresh is what stands between the two.
+            onLaunch={async () => {
+              const box = await createSandbox(token);
+              await refresh(token);
+              return machineName(box);
+            }}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-neutral-600">

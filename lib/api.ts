@@ -43,73 +43,7 @@ export const sessions = (token: string) =>
   read<{ sessions: Session[] }>('/v1/agents/sessions?limit=200', token).then((r) => r.sessions ?? []);
 
 /**
- * Cloud machines — the boxes we launch for you, rather than the ones you linked.
- *
- * A different plane, and deliberately not hidden behind the first one: visor
- * owns provisioning (launch, list, destroy, per-org billing over Hanzo's house
- * account), api.hanzo.ai owns the live agent registry. Proxying one through the
- * other would put Tabs in the middle of a conversation it is not part of, which
- * is the same reason this app has no backend.
- *
- * They MEET at the machine. A launched box runs `hanzo link` exactly as your
- * laptop does, so it registers itself and its terminal shows up in the registry
- * above with no special case anywhere — a cloud machine is not a new kind of
- * pane, it is a machine that happens to have been started by us.
- */
-export const VISOR = process.env.NEXT_PUBLIC_HANZO_VISOR ?? 'https://visor.hanzo.ai';
-
-/** What visor reports about a box. `state` is the provider's, `tag` carries kind. */
-export interface CloudMachine {
-  name: string;
-  id: string;
-  displayName?: string;
-  provider?: string;
-  region?: string;
-  size?: string;
-  state?: string;
-  tag?: string;
-}
-
-async function visorCall<T>(path: string, token: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${VISOR}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(init?.body ? { 'content-type': 'application/json' } : {}),
-    },
-    cache: 'no-store',
-  });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
-  const body = (await res.json()) as { status?: string; msg?: string; data?: T };
-  // Visor answers 200 with {status:"error"} — the SDK contract is to branch on
-  // the field, not the code, so a failed launch that read as success would look
-  // like a machine that never appears.
-  if (body.status === 'error') throw new Error(body.msg || 'visor refused the request');
-  return (body.data ?? body) as T;
-}
-
-/** Boxes this org has running. `kind=tab` filters to the ones you can open. */
-export const cloudMachines = (token: string, kind = 'tab') =>
-  visorCall<CloudMachine[]>(`/v1/machines?kind=${encodeURIComponent(kind)}`, token).then(
-    (m) => m ?? [],
-  );
-
-/**
- * Launch one.
- *
- * `kind: 'tab'` and not `'bot'`: a tab runs `hanzo link` and stops there, so you
- * get a shell without bootstrapping an agent runtime nobody asked for — and the
- * runtime is the expensive half. See visor service/analytics.go, where the kinds
- * nest: machine ⊂ tab ⊂ bot.
- */
-export const launchCloudMachine = (token: string, name?: string) =>
-  visorCall<CloudMachine>('/v1/machines/launch', token, {
-    method: 'POST',
-    body: JSON.stringify({ kind: 'tab', name: name || undefined }),
-  });
-
-/**
- * Dev sandboxes — the third kind of machine, and the ONE terminal contract.
+ * Sandboxes — the machines we start for you, rather than the ones you linked.
  *
  * The builder's pods (hanzo.app, console.hanzo.ai) serve the same framed
  * terminal every other surface uses: cloud hosts the whole emulator page at
@@ -118,6 +52,12 @@ export const launchCloudMachine = (token: string, name?: string) =>
  * kind — it is a machine whose terminal URL is MINTED per open instead of
  * published by `hanzo link`, and `?arg=` names the tmux session exactly as a
  * linked machine's ttyd does.
+ *
+ * It is the SAME plane as the registry above, which is why there is no second
+ * base URL here. A cloud machine used to be a DigitalOcean droplet ordered
+ * through visor: a second provisioning plane, a second failure mode, and a
+ * minute of boot and `hanzo link` before it could serve a shell. A sandbox is a
+ * pod, so the request that asks for one comes back when it is already running.
  */
 export interface SandboxMachine {
   id: string;
@@ -129,6 +69,49 @@ export const sandboxes = (token: string) =>
   read<{ sandboxes?: SandboxMachine[] }>('/v1/sandboxes?status=running', token).then((r) =>
     (r.sandboxes ?? []).filter((s) => s.status === 'running'),
   );
+
+/** How a sandbox names itself in the workspace. Its project is what its DISK is
+ *  keyed on, so it is the name that means the same box tomorrow. */
+export const machineName = (s: SandboxMachine) => s.project || `box-${s.id.slice(0, 6)}`;
+
+/** The project a first cloud machine takes; the ones after it count up. */
+const PROJECT = 'tabs';
+
+/**
+ * Start one, and answer it once it is RUNNING.
+ *
+ * `class: 'dev'` is the machine you shell into — a toolchain, a home, and a disk
+ * that outlives the lease — as against `exec`, which is the code interpreter's
+ * scratch pod. A dev sandbox is named by its project, and the project is what
+ * the disk is keyed on: one live sandbox per project is the server's rule, so
+ * the name is picked against what is already live rather than made up. That is
+ * what makes a second press a second machine instead of a second attempt at the
+ * first one.
+ *
+ * The lease is the server's to set. Tabs has no opinion about how long a machine
+ * should live, and a `ttlSec` here would be a second answer to drift from the one
+ * in the class table.
+ */
+export const createSandbox = async (token: string): Promise<SandboxMachine> => {
+  const taken = new Set((await sandboxes(token)).map(machineName));
+  let project = PROJECT;
+  for (let n = 2; taken.has(project); n++) project = `${PROJECT}-${n}`;
+  const res = await fetch(`${API}/v1/sandboxes`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ class: 'dev', project }),
+    cache: 'no-store',
+  });
+  // Starting a machine fails for reasons a person can act on — an image that
+  // will not pull, a project already held, an org at its ceiling — and the
+  // server says which. A bare status code next to the button would name none of
+  // them.
+  if (!res.ok) {
+    const why = (await res.json().catch(() => null)) as { error?: string } | null;
+    throw new Error(why?.error || `new machine → ${res.status}`);
+  }
+  return (await res.json()) as SandboxMachine;
+};
 
 /** Mint the single-use ticket for a sandbox's terminal. Spent on first use. */
 export const terminalTicket = async (token: string, id: string): Promise<string> => {

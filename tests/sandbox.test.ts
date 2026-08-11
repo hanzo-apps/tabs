@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { API, sandboxTerminal } from '@/lib/api';
+import { API, createSandbox, machineName, sandboxTerminal } from '@/lib/api';
 
 /**
  * A sandbox joins the workspace as a machine whose URL is MINTED, not
@@ -47,5 +47,68 @@ describe('the workspace mints once per pane', () => {
     // be reopened in a tab, only re-minted.
     expect(src).toMatch(/refused\[id\] \? \(\s*host\?\.sandbox \?/);
     expect(src).toMatch(/refused\[id\] \?[\s\S]*?Reconnect/);
+  });
+});
+
+describe('a sandbox is named by its project', () => {
+  it('goes by the project, which is what its disk is keyed on', () => {
+    expect(machineName({ id: 'abcdef123456', status: 'running', project: 'tabs' })).toBe('tabs');
+  });
+
+  it('falls back to its id, so a projectless box is still openable', () => {
+    expect(machineName({ id: 'abcdef123456', status: 'running' })).toBe('box-abcdef');
+  });
+});
+
+/**
+ * Starting one. The server keeps ONE live sandbox per project and refuses the
+ * rest, so the name is picked against what is already live — which is the whole
+ * difference between a second machine and a second attempt at the first.
+ */
+describe('a new cloud machine', () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const answer = (live: unknown[], made: unknown, ok = true) => {
+    calls.length = 0;
+    global.fetch = (async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      const body = init?.method === 'POST' ? made : { sandboxes: live };
+      return {
+        ok: init?.method === 'POST' ? ok : true,
+        status: ok ? 201 : 503,
+        json: async () => body,
+      };
+    }) as unknown as typeof fetch;
+  };
+
+  it('asks for a dev sandbox — the machine you shell into, not a scratch pod', async () => {
+    answer([], { id: 'b1', status: 'running', project: 'tabs' });
+    await createSandbox('t');
+    const post = calls.find((c) => c.init?.method === 'POST')!;
+    expect(post.url).toBe(`${API}/v1/sandboxes`);
+    expect(JSON.parse(String(post.init!.body))).toEqual({ class: 'dev', project: 'tabs' });
+  });
+
+  it('counts past the boxes already live, so pressing twice makes two', async () => {
+    answer(
+      [
+        { id: 'b1', status: 'running', project: 'tabs' },
+        { id: 'b2', status: 'running', project: 'tabs-2' },
+      ],
+      { id: 'b3', status: 'running', project: 'tabs-3' },
+    );
+    await createSandbox('t');
+    const post = calls.find((c) => c.init?.method === 'POST')!;
+    expect(JSON.parse(String(post.init!.body)).project).toBe('tabs-3');
+  });
+
+  it("carries the server's reason, because a bare status code names none of them", async () => {
+    answer([], { error: 'start sandbox: pod not running after 2m0s' }, false);
+    await expect(createSandbox('t')).rejects.toThrow('pod not running after 2m0s');
+  });
+
+  it('never sends the bearer to anything but the API', async () => {
+    answer([], { id: 'b1', status: 'running', project: 'tabs' });
+    await createSandbox('t');
+    for (const c of calls) expect(c.url.startsWith(API)).toBe(true);
   });
 });
