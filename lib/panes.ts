@@ -33,6 +33,18 @@ export type Binding =
   | { kind: 'screen'; machine: string }
   /** Split made, machine not chosen yet. */
   | { kind: 'empty' }
+  /**
+   * A machine is being STARTED for this pane, and does not exist yet.
+   *
+   * The pane is on screen from the click, because the wait is the thing worth
+   * watching and it is the longest part: provisioning a cloud machine takes
+   * tens of seconds, and a spinner on the button that caused it leaves the
+   * workspace looking untouched for all of them. `want` is how the machine will
+   * be shown the moment it answers.
+   */
+  | { kind: 'starting'; want: 'shell' | 'screen' }
+  /** No machine came. The pane keeps the reason, next to the space it was for. */
+  | { kind: 'failed'; why: string }
   /** The machine went away. The pane STAYS, because tmux is still holding the
    *  session and the layout is the reader's, not a function of someone's uptime. */
   | { kind: 'gone'; shell: Shell };
@@ -48,9 +60,26 @@ export function label(b: Binding): string {
       return `${b.shell.machine} · ${b.shell.name}`;
     case 'screen':
       return `${b.machine} · desktop`;
+    case 'starting':
+      return b.want === 'screen' ? 'Starting a desktop' : 'Starting a machine';
+    case 'failed':
+      return 'Could not start';
     default:
       return 'New shell';
   }
+}
+
+/**
+ * What a saved pane becomes on the way back in.
+ *
+ * A launch does not survive the page that asked for it: the promise died with
+ * the tab, so a restored `starting` would spin for a machine nobody is waiting
+ * on, and a restored `failed` would state a reason about a moment that has
+ * passed. Both come back as the pane that asks — by then the machine may well
+ * have finished starting, and it is in the list.
+ */
+export function restore(b: Binding): Binding {
+  return b.kind === 'starting' || b.kind === 'failed' ? { kind: 'empty' } : b;
 }
 
 /** The machine a pane is bound to, whichever way it is looking at it. */

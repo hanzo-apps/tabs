@@ -8,6 +8,7 @@ import {
   machineOf,
   mintName,
   rescued,
+  restore,
   safeName,
   shellUrl,
 } from '@/lib/panes';
@@ -138,5 +139,49 @@ describe('a pane bound to a screen is still bound to a machine', () => {
     expect(label({ kind: 'shell', shell: { machine: 'desk', name: 'build' } })).toBe('desk · build');
     expect(label({ kind: 'screen', machine: 'desk' })).toBe('desk · desktop');
     expect(label({ kind: 'empty' })).toBe('New shell');
+  });
+});
+
+/**
+ * A machine that does not exist yet still gets a pane.
+ *
+ * The pane is opened by the CLICK and settled by the ANSWER, because
+ * provisioning a cloud machine is tens of seconds and waiting for it before
+ * drawing anything leaves the workspace looking like the click missed. So a
+ * binding has to be able to say "a machine is coming" and "none came".
+ */
+describe('a pane can be waiting for a machine', () => {
+  it('is bound to no machine while one is being made', () => {
+    // Load-bearing: the mint effect keys on machineOf, so a starting pane
+    // naming a machine would send a ticket request for a box that is not there.
+    expect(machineOf({ kind: 'starting', want: 'shell' })).toBeNull();
+    expect(machineOf({ kind: 'starting', want: 'screen' })).toBeNull();
+    expect(machineOf({ kind: 'failed', why: 'out of capacity' })).toBeNull();
+  });
+
+  it('says which kind of machine it is waiting for', () => {
+    expect(label({ kind: 'starting', want: 'shell' })).toBe('Starting a machine');
+    expect(label({ kind: 'starting', want: 'screen' })).toBe('Starting a desktop');
+    expect(label({ kind: 'failed', why: 'out of capacity' })).toBe('Could not start');
+  });
+
+  it('comes back as the pane that asks, never as one still waiting', () => {
+    // The promise died with the page, so nothing will ever settle a restored
+    // `starting` — it would spin for a machine nobody is waiting on. And a
+    // restored `failed` states a reason about a moment that has passed.
+    expect(restore({ kind: 'starting', want: 'shell' })).toEqual({ kind: 'empty' });
+    expect(restore({ kind: 'starting', want: 'screen' })).toEqual({ kind: 'empty' });
+    expect(restore({ kind: 'failed', why: 'out of capacity' })).toEqual({ kind: 'empty' });
+  });
+
+  it('leaves a pane that is showing something alone', () => {
+    const shell = { kind: 'shell', shell: { machine: 'desk', name: 'build' } } as const;
+    const screen = { kind: 'screen', machine: 'desk' } as const;
+    const gone = { kind: 'gone', shell: { machine: 'desk', name: 'build' } } as const;
+    expect(restore(shell)).toBe(shell);
+    expect(restore(screen)).toBe(screen);
+    // A machine that went away is the ONE waiting state that survives a reload:
+    // tmux is still holding that session, so the pane is still about something.
+    expect(restore(gone)).toBe(gone);
   });
 });
