@@ -61,7 +61,6 @@ import {
   mintName,
   rescued,
   restore,
-  shellUrl,
 } from '@/lib/panes';
 
 /** A machine that can serve shells: its name and the tunnel its terminals live on. */
@@ -105,10 +104,11 @@ export function Workspace({
   onLaunch,
 }: {
   hosts: TerminalHost[];
-  /** A fresh URL for a sandbox pane, for whatever that pane shows. The caller
-   *  owns the credential; the workspace only ever holds the minted,
-   *  ticket-bearing URL. */
-  mint?: (sandbox: string, what: Binding) => Promise<string>;
+  /** A fresh URL for a pane, for whatever that pane shows. EVERY pane, not only
+   *  a sandbox's: a machine you linked and a machine we started differ in who
+   *  serves the page and what credential opens it, and in nothing a layout cares
+   *  about. The caller owns the token; the workspace only ever holds the URL. */
+  mint?: (host: TerminalHost, what: Binding) => Promise<string>;
   /** Start a cloud machine of one class, and answer the name it goes by here. */
   onLaunch?: (kind: 'dev' | 'desktop') => Promise<string>;
 }) {
@@ -385,11 +385,15 @@ export function Workspace({
   }>(null);
   const rendered = useMemo(() => order.filter((id) => bind[id]), [order, bind]);
 
-  // Sandbox panes: the URL is minted, not published. Minted per PANE and kept
-  // until that pane reconnects — a ticket is spent by the frame's first load,
-  // so re-deriving the URL on render would hand the iframe a dead credential.
-  // In-flight ids are tracked outside state so a re-render mid-mint cannot
-  // start a second mint for the same pane (two tickets, one wasted).
+  // A PANE'S URL IS MINTED, NEVER DERIVED — for every machine, not only the
+  // ones we start. Minted per PANE and kept until that pane reconnects, because
+  // what the mint returns is spent: a sandbox's ticket by the frame's first
+  // load, a tunnel's session by nothing, but both are asked for with a
+  // credential this component deliberately does not hold. Re-deriving on render
+  // would hand the iframe a dead one.
+  //
+  // In-flight ids are tracked outside state so a re-render mid-mint cannot start
+  // a second mint for the same pane.
   const [minted, setMinted] = useState<Record<string, string>>({});
   const minting = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -399,19 +403,19 @@ export function Workspace({
       const m = b && (b.kind === 'shell' || b.kind === 'screen') ? machineOf(b) : null;
       if (!b || !m) continue;
       const h = hostOf(m);
-      if (!h?.sandbox || minted[id] || minting.current.has(id)) continue;
+      if (!h || minted[id] || minting.current.has(id)) continue;
       minting.current.add(id);
-      mint(h.sandbox, b)
+      mint(h, b)
         .then((src) => setMinted((m) => ({ ...m, [id]: src })))
-        // A failed mint leaves the pane on its "waiting" face; the deadline
-        // then offers reconnect, which is the retry.
-        .catch(() => {})
+        // A pane whose URL never arrived is offered the way out immediately,
+        // rather than waiting out a deadline for a frame that was never made.
+        .catch(() => setWaited((w) => ({ ...w, [id]: true })))
         .finally(() => minting.current.delete(id));
     }
   }, [rendered, bind, hostOf, mint, minted]);
 
-  /** Reconnect a sandbox pane: forget the spent URL and the frame's history so
-   *  the mint effect runs again with a fresh ticket and the deadline re-arms. */
+  /** Reconnect a pane: forget the spent URL and the frame's history so the mint
+   *  effect runs again with a fresh credential and the deadline re-arms. */
   const reconnect = useCallback((id: string) => {
     const drop = <T,>(o: Record<string, T>): Record<string, T> => {
       const { [id]: _gone, ...rest } = o;
@@ -557,19 +561,11 @@ export function Workspace({
             const machine = machineOf(b);
             const host = machine ? hostOf(machine) : undefined;
             const title = label(b);
-            // A sandbox pane frames its minted, ticket-bearing URL; a linked
-            // machine's pane derives from the published tunnel. `minted` is
-            // per-pane state because the ticket is spent on first load —
-            // deriving would re-spend it every render.
-            //
-            // A SCREEN IS ALWAYS MINTED. A tunnel publishes a terminal and
-            // nothing else, so a linked machine has no screen to derive — the
-            // pane waits, which is the truth about that machine.
-            const url = host?.sandbox
-              ? (minted[id] ?? null)
-              : host?.base && b.kind === 'shell'
-                ? shellUrl(host.base, b.shell.name)
-                : null;
+            // One source, whatever the machine. A pane that has no URL yet is a
+            // mint still in flight or one that could not be made — a tunnel
+            // publishes a terminal and nothing else, so a linked machine has no
+            // screen and never gets one.
+            const url = minted[id] ?? null;
             // Every rect is page-relative; the track is `pages * 100%` wide, so a
             // page occupies `100/pages` of it.
             const left = paging ? r.left / pages : r.left;
@@ -712,40 +708,24 @@ export function Workspace({
                       </p>
                     </div>
                   ) : refused[id] ? (
-                    host?.sandbox ? (
-                      // A sandbox frame that never said ready is a spent or
-                      // expired ticket — the URL cannot be reopened, only
-                      // re-minted. Never the sign-in tab here: the ticket IS
-                      // the sign-in, and opening a dead one teaches nothing.
-                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
-                        <p className="max-w-xs text-xs text-muted-foreground">
-                          {b.kind === 'screen' ? 'The desktop' : 'The terminal'} did not come up.
-                          Its ticket lasts thirty seconds — reconnecting mints a fresh one.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => reconnect(id)}
-                          className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm text-foreground hover:bg-muted"
-                        >
-                          Reconnect
-                        </button>
-                      </div>
-                    ) : (
+                    // A frame that never said ready is a credential that no
+                    // longer opens anything — a spent ticket, an aged session —
+                    // and the URL cannot be reopened, only asked for again.
+                    // NEVER a sign-in here: the mint IS the sign-in, and sending
+                    // someone to a second one is what this stopped doing.
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
                       <p className="max-w-xs text-xs text-muted-foreground">
-                        This terminal needs a one-time sign-in on its own domain. The gate refuses
-                        to be shown inside a frame, so it opens in a tab — once.
+                        {b.kind === 'screen' ? 'The desktop' : 'The terminal'} did not come up.
+                        Reconnecting asks for a fresh credential and tries again.
                       </p>
-                      <a
-                        href={url ?? '#'}
-                        target="_blank"
-                        rel="noreferrer noopener"
+                      <button
+                        type="button"
+                        onClick={() => reconnect(id)}
                         className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm text-foreground hover:bg-muted"
                       >
-                        Sign in to this terminal ↗
-                      </a>
+                        Reconnect
+                      </button>
                     </div>
-                    )
                   ) : null}
                 </div>
               </div>

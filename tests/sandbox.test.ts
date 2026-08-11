@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { API, createSandbox, frameUrl, machineName } from '@/lib/api';
+import { API, createSandbox, frameUrl, grant, machineName } from '@/lib/api';
 
 /**
  * A sandbox joins the workspace as a machine whose URLs are MINTED, not
@@ -55,6 +55,55 @@ describe('the framed URL', () => {
   });
 });
 
+/**
+ * A linked machine's tunnel, handed the identity this browser already holds.
+ *
+ * The tunnel is gated on hanzo.id, and hanzo.id refuses to be framed — so the
+ * gate's own redirect could never run inside a pane, and the workspace used to
+ * offer a second sign-in in a second tab for a session that already existed.
+ * The grant is that redirect, skipped: one ask, with the token this page reads
+ * the registry with, and the tunnel answers with the session.
+ */
+describe('the grant on a linked machine', () => {
+  const answers = (res: Partial<Response>) => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    global.fetch = (async (u: string, init?: RequestInit) => {
+      calls.push({ url: String(u), init });
+      return { ok: false, status: 0, type: 'basic', ...res };
+    }) as unknown as typeof fetch;
+    return calls;
+  };
+
+  it('asks the tunnel itself, with the bearer, for a cookie it may keep', async () => {
+    const calls = answers({ ok: true, status: 204 });
+    await grant('bearer', 'https://g3q84fzbgfpy.share.hanzo.ai');
+    expect(calls[0]!.url).toBe('https://g3q84fzbgfpy.share.hanzo.ai/.well-known/zrok/session');
+    expect(calls[0]!.init!.method).toBe('POST');
+    expect((calls[0]!.init!.headers as Record<string, string>).Authorization).toBe('Bearer bearer');
+    // Without this the browser discards the Set-Cookie and the pane, which
+    // carries no bearer of its own, is refused on its very next request.
+    expect(calls[0]!.init!.credentials).toBe('include');
+  });
+
+  it('never follows the sign-in it exists to avoid', async () => {
+    // Chasing the 302 lands on hanzo.id — the page that cannot be framed and
+    // must not be visited on a person's behalf.
+    const calls = answers({ ok: true, status: 204 });
+    await grant('t', 'https://x.share.hanzo.ai');
+    expect(calls[0]!.init!.redirect).toBe('manual');
+  });
+
+  it('reports a tunnel that answers with a sign-in rather than a session', async () => {
+    answers({ ok: false, type: 'opaqueredirect' as ResponseType });
+    await expect(grant('t', 'https://x.share.hanzo.ai')).rejects.toThrow('asked for a sign-in');
+  });
+
+  it('reports a refusal as itself', async () => {
+    answers({ ok: false, status: 403, type: 'basic' as ResponseType });
+    await expect(grant('t', 'https://x.share.hanzo.ai')).rejects.toThrow('terminal grant → 403');
+  });
+});
+
 describe('the workspace mints once per pane', () => {
   const src = readFileSync(join(process.cwd(), 'components/workspace.tsx'), 'utf8');
 
@@ -65,11 +114,14 @@ describe('the workspace mints once per pane', () => {
     expect(src).toContain('minting.current.has(id)');
   });
 
-  it('a screen is always minted, never derived from a published tunnel', () => {
-    // `hanzo link` publishes a terminal and nothing else, so a screen has no
-    // base to derive from. Deriving one would frame a terminal and call it a
-    // desktop.
-    expect(src).toContain("host?.base && b.kind === 'shell'");
+  it('has ONE source for a pane URL, whichever kind of machine serves it', () => {
+    // The workspace used to fork: minted for a sandbox, derived from the
+    // published tunnel for a linked machine — which is what left the linked
+    // one framing a URL nobody had authorised, and a person staring at a
+    // second sign-in. Both are minted now, so there is one path to be right.
+    expect(src).toContain('const url = minted[id] ?? null;');
+    expect(src).not.toContain('shellUrl(');
+    expect(src).not.toMatch(/host\?\.sandbox\s*\?/);
   });
 
   it('reconnect forgets the spent URL AND the readiness history', () => {
@@ -78,11 +130,20 @@ describe('the workspace mints once per pane', () => {
     expect(src).toContain('setWaited(drop)');
   });
 
-  it('a refused sandbox pane offers a re-mint, never the sign-in tab', () => {
-    // The rescue branches on the host KIND first: a sandbox's dead URL cannot
-    // be reopened in a tab, only re-minted.
-    expect(src).toMatch(/refused\[id\] \? \(\s*host\?\.sandbox \?/);
+  it('a refused pane offers a re-mint, and NEVER a second sign-in', () => {
+    // The one rescue, for every pane. A dead credential cannot be reopened in a
+    // tab, only asked for again — and sending someone to sign in a second time,
+    // as the same person, on another domain, is the defect this replaced.
     expect(src).toMatch(/refused\[id\] \?[\s\S]*?Reconnect/);
+    expect(src).not.toMatch(/Sign in to this terminal/);
+    expect(src).not.toMatch(/target="_blank"/);
+  });
+
+  it('offers that rescue when the URL never arrived, not only when the frame died', () => {
+    // A mint that fails leaves no iframe, so nothing is ever probed and the
+    // readiness deadline never fires. Without this the pane says "waiting"
+    // forever about a terminal nobody is going to bring.
+    expect(src).toMatch(/\.catch\(\(\) => setWaited\(/);
   });
 });
 

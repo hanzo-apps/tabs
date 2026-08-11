@@ -123,6 +123,44 @@ export const createSandbox = async (token: string, kind: Class = 'dev'): Promise
   return (await res.json()) as SandboxMachine;
 };
 
+/**
+ * Hand a linked machine's tunnel the identity this browser already holds.
+ *
+ * A published terminal is a shell, so `hanzo link` puts its tunnel behind the
+ * org's identity provider. The tunnel used to learn who you are the only way it
+ * could — by redirecting to hanzo.id — and hanzo.id will not be framed, quite
+ * rightly, because a login page inside someone else's document is clickjacking.
+ * So a pane could not open the terminal of a machine belonging to the very
+ * person looking at it: the redirect had to leave the frame, and the answer was
+ * a second sign-in for a session that already existed.
+ *
+ * This is that redirect, skipped. The tunnel is asked once, with the token this
+ * page is already using to read the registry, and answers with the session it
+ * would have set at the end of the round trip. One identity, one sign-in, no
+ * tab. The bearer stays in this module; what the workspace gets is a URL.
+ *
+ * `credentials: 'include'` because the whole point is the cookie that comes
+ * back, and `share.hanzo.ai` is a sibling of this page, not a third party.
+ */
+export const grant = async (token: string, base: string): Promise<void> => {
+  const res = await fetch(new URL('/.well-known/zrok/session', base).toString(), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    credentials: 'include',
+    // Never chase it: a tunnel that answers with a redirect is one that does not
+    // know how to be asked, and following it lands on the sign-in page whose
+    // absence is the point.
+    redirect: 'manual',
+    cache: 'no-store',
+  });
+  if (res.ok) return;
+  throw new Error(
+    res.type === 'opaqueredirect'
+      ? 'terminal grant → the tunnel asked for a sign-in'
+      : `terminal grant → ${res.status}`,
+  );
+};
+
 /** The two ways to look at a machine: its shell, or its screen. Same sandbox,
  *  same credential, two pages — see cloud's apps/sandbox. */
 export type Door = 'terminal' | 'screen';
