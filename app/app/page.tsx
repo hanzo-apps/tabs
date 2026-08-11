@@ -23,12 +23,13 @@ import {
   type Session,
   createSandbox,
   frameUrl,
+  grant,
   machineName,
   machines,
   sandboxes,
   sessions,
 } from '@/lib/api';
-import { type Binding } from '@/lib/panes';
+import { type Binding, shellUrl } from '@/lib/panes';
 import { renew, session, signIn, signOut } from '@/lib/iam';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
@@ -136,16 +137,39 @@ export default function App() {
     return [...out.values()];
   }, [data]);
 
-  /** A fresh URL for a sandbox pane — ticket minted here, where the token
-   *  lives, so the workspace stays credential-free. What the pane SHOWS picks
-   *  the door: a shell attaches to its tmux session by name, a screen has one
-   *  display and needs no name. */
+  /**
+   * A fresh URL for a pane, minted here where the token lives so the workspace
+   * stays credential-free.
+   *
+   * ONE ACT, WHOEVER SERVES THE PAGE. A sandbox's terminal is hosted by cloud
+   * and opened by a single-use ticket; a linked machine's is served by the
+   * machine over its own tunnel, and what that tunnel wants is a session for
+   * the identity this browser is already holding. Both are "ask with the token,
+   * then frame the answer", which is why the workspace no longer knows or cares
+   * which kind of machine a pane is bound to — and why a linked machine's
+   * terminal is now the same signed-in person as the page around it, instead of
+   * a second sign-in on another domain.
+   *
+   * What the pane SHOWS picks the door: a shell attaches to its tmux session by
+   * name, a screen has one display and needs no name. A tunnel publishes a
+   * terminal and nothing else, so a linked machine has no screen to open.
+   */
   const mint = useCallback(
-    async (sandbox: string, what: Binding) => {
+    async (host: TerminalHost, what: Binding) => {
       if (!token) throw new Error('signed out');
-      return what.kind === 'screen'
-        ? frameUrl(token, sandbox, 'screen')
-        : frameUrl(token, sandbox, 'terminal', what.kind === 'shell' ? what.shell.name : undefined);
+      if (host.sandbox) {
+        return what.kind === 'screen'
+          ? frameUrl(token, host.sandbox, 'screen')
+          : frameUrl(
+              token,
+              host.sandbox,
+              'terminal',
+              what.kind === 'shell' ? what.shell.name : undefined,
+            );
+      }
+      if (!host.base || what.kind !== 'shell') throw new Error('this machine serves no terminal');
+      await grant(token, host.base);
+      return shellUrl(host.base, what.shell.name);
     },
     [token],
   );
