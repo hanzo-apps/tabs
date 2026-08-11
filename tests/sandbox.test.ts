@@ -1,28 +1,57 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { API, createSandbox, machineName, sandboxTerminal } from '@/lib/api';
+import { API, createSandbox, frameUrl, machineName } from '@/lib/api';
 
 /**
- * A sandbox joins the workspace as a machine whose URL is MINTED, not
- * published — the one terminal contract every Hanzo surface frames
- * (/v1/sandboxes/:id/terminal, single-use thirty-second ticket). These pin the
- * two properties that would fail silently: the URL's only credential is the
- * ticket, and a pane never mints twice for one bind.
+ * A sandbox joins the workspace as a machine whose URLs are MINTED, not
+ * published — the one contract every Hanzo surface frames (a single-use
+ * thirty-second ticket, and the page the mint names). These pin the properties
+ * that would fail silently: the URL's only credential is the ticket, the door
+ * asked for is the door opened, and a pane never mints twice for one bind.
  */
-describe('the framed terminal URL', () => {
-  it('carries the ticket and the shell name, both encoded, and nothing else', () => {
-    const u = new URL(sandboxTerminal('box 1/x', 'tk+&=', 'build'));
+describe('the framed URL', () => {
+  const mint = (url: string, ok = true) => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    global.fetch = (async (u: string, init?: RequestInit) => {
+      calls.push({ url: String(u), init });
+      return { ok, status: ok ? 201 : 409, json: async () => ({ url }) };
+    }) as unknown as typeof fetch;
+    return calls;
+  };
+
+  it('asks the door it wants and frames the address that door answered', async () => {
+    const calls = mint('/v1/sandboxes/box%201/terminal?ticket=tk%2B');
+    const got = await frameUrl('bearer', 'box 1', 'terminal', 'build');
+    expect(calls[0]!.url).toBe(`${API}/v1/sandboxes/box%201/terminal/ticket`);
+    expect(calls[0]!.init!.method).toBe('POST');
+    const u = new URL(got);
     expect(u.origin).toBe(new URL(API).origin);
-    expect(u.pathname).toBe('/v1/sandboxes/box%201%2Fx/terminal');
-    expect(u.searchParams.get('ticket')).toBe('tk+&=');
+    expect(u.pathname).toBe('/v1/sandboxes/box%201/terminal');
+    expect(u.searchParams.get('ticket')).toBe('tk+');
     expect(u.searchParams.get('arg')).toBe('build');
     expect([...u.searchParams.keys()].sort()).toEqual(['arg', 'ticket']);
   });
 
-  it('never carries a bearer — the ticket IS the credential', () => {
-    const u = sandboxTerminal('b', 't', 's');
+  it('mints a SCREEN at the screen door, and gives it no shell name to attach to', async () => {
+    // A machine has one display. An `arg` here would be a tmux session name sent
+    // to something that has no tmux.
+    const calls = mint('/v1/sandboxes/b/screen?ticket=tk');
+    const got = await frameUrl('bearer', 'b', 'screen');
+    expect(calls[0]!.url).toBe(`${API}/v1/sandboxes/b/screen/ticket`);
+    expect(new URL(got).pathname).toBe('/v1/sandboxes/b/screen');
+    expect([...new URL(got).searchParams.keys()]).toEqual(['ticket']);
+  });
+
+  it('never carries a bearer — the ticket IS the credential', async () => {
+    mint('/v1/sandboxes/b/terminal?ticket=tk');
+    const u = await frameUrl('a-real-looking-bearer-token', 'b', 'terminal', 's');
     expect(u).not.toMatch(/token|bearer|authorization/i);
+  });
+
+  it('refuses to frame anything when the mint refuses', async () => {
+    mint('/v1/sandboxes/b/screen?ticket=tk', false);
+    await expect(frameUrl('t', 'b', 'screen')).rejects.toThrow('screen ticket → 409');
   });
 });
 
@@ -34,6 +63,13 @@ describe('the workspace mints once per pane', () => {
     // would hand the iframe a dead credential on the next paint.
     expect(src).toContain('minted[id] ?? null');
     expect(src).toContain('minting.current.has(id)');
+  });
+
+  it('a screen is always minted, never derived from a published tunnel', () => {
+    // `hanzo link` publishes a terminal and nothing else, so a screen has no
+    // base to derive from. Deriving one would frame a terminal and call it a
+    // desktop.
+    expect(src).toContain("host?.base && b.kind === 'shell'");
   });
 
   it('reconnect forgets the spent URL AND the readiness history', () => {
@@ -86,6 +122,19 @@ describe('a new cloud machine', () => {
     const post = calls.find((c) => c.init?.method === 'POST')!;
     expect(post.url).toBe(`${API}/v1/sandboxes`);
     expect(JSON.parse(String(post.init!.body))).toEqual({ class: 'dev', project: 'tabs' });
+  });
+
+  it('asks for a desktop under its OWN name — the project is what the disk is keyed on', async () => {
+    // Borrowing the shell machines' project would be the same box's second
+    // attempt (one live sandbox per project), not a second box.
+    answer([{ id: 'b1', status: 'running', project: 'tabs' }], {
+      id: 'b2',
+      status: 'running',
+      project: 'desk',
+    });
+    await createSandbox('t', 'desktop');
+    const post = calls.find((c) => c.init?.method === 'POST')!;
+    expect(JSON.parse(String(post.init!.body))).toEqual({ class: 'desktop', project: 'desk' });
   });
 
   it('counts past the boxes already live, so pressing twice makes two', async () => {

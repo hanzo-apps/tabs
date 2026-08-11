@@ -28,11 +28,43 @@ export interface Shell {
 
 export type Binding =
   | { kind: 'shell'; shell: Shell }
+  /** The machine's SCREEN — its X display, as pixels. No name, because a
+   *  machine has one display where it has as many shells as you ask for. */
+  | { kind: 'screen'; machine: string }
   /** Split made, machine not chosen yet. */
   | { kind: 'empty' }
   /** The machine went away. The pane STAYS, because tmux is still holding the
    *  session and the layout is the reader's, not a function of someone's uptime. */
   | { kind: 'gone'; shell: Shell };
+
+/** What a pane calls itself: the machine, then which of its faces this is.
+ *  One function, so the header, the frame's title and the phone's pager cannot
+ *  disagree about what a person is looking at. */
+export function label(b: Binding): string {
+  switch (b.kind) {
+    case 'shell':
+      return `${b.shell.machine} · ${b.shell.name}`;
+    case 'gone':
+      return `${b.shell.machine} · ${b.shell.name}`;
+    case 'screen':
+      return `${b.machine} · desktop`;
+    default:
+      return 'New shell';
+  }
+}
+
+/** The machine a pane is bound to, whichever way it is looking at it. */
+export function machineOf(b: Binding): string | null {
+  switch (b.kind) {
+    case 'shell':
+    case 'gone':
+      return b.shell.machine;
+    case 'screen':
+      return b.machine;
+    default:
+      return null;
+  }
+}
 
 /** The default tmux session a machine's first pane opens — matches the CLI's. */
 export const DEFAULT_SHELL = 'hanzo';
@@ -89,12 +121,20 @@ export const DOT: Record<string, string> = {
 };
 
 /**
- * The terminal readiness contract — BOTH halves, in one place.
+ * The readiness contract — BOTH halves, in one place.
  *
- * `TERM_READY` is the `source` our terminal page posts to its parent once xterm
- * has opened (hanzo/cli `assets/term/client.js`). It lives here rather than in
- * the component because it is a wire value shared with another repository: one
- * side changing it silently is a workspace where every pane looks dead.
+ * `READY` are the `source` values our framed pages post to their parent once
+ * they are up: the terminal's when xterm has opened (hanzo/cli
+ * `assets/term/client.js`, cloud `apps/sandbox/term/page.html`), the screen's
+ * when noVNC has connected (cloud `apps/sandbox/screen/page.html`). They live
+ * here rather than in the component because they are wire values shared with
+ * another repository: one side changing one silently is a workspace where every
+ * pane of that kind looks dead.
+ *
+ * Two names and one meaning, on purpose. Each page says WHAT it is, because
+ * that costs nothing and a page that lied about itself would be worse; what a
+ * parent asks is only whether the thing it framed came up, so the question has
+ * one answer for both.
  *
  * The rule this enables is small and the reason for it is not. A parent cannot
  * tell a healthy cross-origin frame from a refused one — the browser substitutes
@@ -103,19 +143,19 @@ export const DOT: Record<string, string> = {
  * gate, a `frame-ancestors` refusal, a dead tunnel, an offline machine) collapses
  * to the same silence and the same answer.
  */
-export const TERM_READY = 'hanzo-term';
+export const READY = ['hanzo-term', 'hanzo-screen'];
 
-/** How long a pane waits to hear from its terminal before offering the way out.
- *  Long enough that a rescue never flashes over a terminal that is merely still
- *  connecting, which would be its own defect. */
-export const TERM_DEADLINE = 6000;
+/** How long a pane waits to hear from what it framed before offering the way
+ *  out. Long enough that a rescue never flashes over a terminal that is merely
+ *  still connecting, which would be its own defect. */
+export const DEADLINE = 6000;
 
-/** Whether a posted message is our terminal announcing itself. */
-export function isTermReady(data: unknown): boolean {
+/** Whether a posted message is one of our pages announcing itself. */
+export function isReady(data: unknown): boolean {
   return (
     typeof data === 'object' &&
     data !== null &&
-    (data as { source?: unknown }).source === TERM_READY
+    READY.includes((data as { source?: unknown }).source as string)
   );
 }
 

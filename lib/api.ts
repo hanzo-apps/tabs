@@ -63,6 +63,9 @@ export interface SandboxMachine {
   id: string;
   status: string;
   project?: string;
+  /** `dev` shells; `desktop` also has an X server, so it has a SCREEN to watch.
+   *  It is the machine's own answer and not a guess from its name. */
+  class?: string;
 }
 
 export const sandboxes = (token: string) =>
@@ -74,32 +77,39 @@ export const sandboxes = (token: string) =>
  *  keyed on, so it is the name that means the same box tomorrow. */
 export const machineName = (s: SandboxMachine) => s.project || `box-${s.id.slice(0, 6)}`;
 
-/** The project a first cloud machine takes; the ones after it count up. */
-const PROJECT = 'tabs';
+/** What a first cloud machine of each class is called; the ones after it count
+ *  up. Two names because the project keys the DISK and the server keeps one
+ *  live sandbox per project — so a desktop that borrowed the shell machines'
+ *  name would be the same box's second attempt rather than a second box. */
+const PROJECT: Record<Class, string> = { dev: 'tabs', desktop: 'desk' };
+
+/** The two machines tabs starts. `dev` is the one you shell into — a toolchain,
+ *  a home, and a disk that outlives the lease; `desktop` is that plus an X
+ *  server, a window manager and a VNC server, so it has a screen. Neither is
+ *  `exec`, the code interpreter's scratch pod, which tabs never opens. */
+export type Class = 'dev' | 'desktop';
 
 /**
  * Start one, and answer it once it is RUNNING.
  *
- * `class: 'dev'` is the machine you shell into — a toolchain, a home, and a disk
- * that outlives the lease — as against `exec`, which is the code interpreter's
- * scratch pod. A dev sandbox is named by its project, and the project is what
- * the disk is keyed on: one live sandbox per project is the server's rule, so
- * the name is picked against what is already live rather than made up. That is
- * what makes a second press a second machine instead of a second attempt at the
- * first one.
+ * A sandbox is named by its project, and the project is what the disk is keyed
+ * on: one live sandbox per project is the server's rule, so the name is picked
+ * against what is already live rather than made up. That is what makes a second
+ * press a second machine instead of a second attempt at the first one.
  *
  * The lease is the server's to set. Tabs has no opinion about how long a machine
  * should live, and a `ttlSec` here would be a second answer to drift from the one
  * in the class table.
  */
-export const createSandbox = async (token: string): Promise<SandboxMachine> => {
+export const createSandbox = async (token: string, kind: Class = 'dev'): Promise<SandboxMachine> => {
   const taken = new Set((await sandboxes(token)).map(machineName));
-  let project = PROJECT;
-  for (let n = 2; taken.has(project); n++) project = `${PROJECT}-${n}`;
+  const first = PROJECT[kind];
+  let project = first;
+  for (let n = 2; taken.has(project); n++) project = `${first}-${n}`;
   const res = await fetch(`${API}/v1/sandboxes`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ class: 'dev', project }),
+    body: JSON.stringify({ class: kind, project }),
     cache: 'no-store',
   });
   // Starting a machine fails for reasons a person can act on — an image that
@@ -113,23 +123,36 @@ export const createSandbox = async (token: string): Promise<SandboxMachine> => {
   return (await res.json()) as SandboxMachine;
 };
 
-/** Mint the single-use ticket for a sandbox's terminal. Spent on first use. */
-export const terminalTicket = async (token: string, id: string): Promise<string> => {
-  const res = await fetch(`${API}/v1/sandboxes/${encodeURIComponent(id)}/terminal/ticket`, {
+/** The two ways to look at a machine: its shell, or its screen. Same sandbox,
+ *  same credential, two pages — see cloud's apps/sandbox. */
+export type Door = 'terminal' | 'screen';
+
+/**
+ * Mint a single-use ticket and answer the page to frame.
+ *
+ * The URL is the SERVER'S, not composed here: the mint answers the path its own
+ * ticket opens, so a client cannot spell a door's address wrong or send a
+ * ticket somewhere it does not work. All this adds is the host it was already
+ * talking to, and `arg` — the tmux session a terminal attaches to, which a
+ * screen has no use for because a machine has one display.
+ *
+ * The ticket is spent by the first load and lasts thirty seconds, so this is
+ * called once per pane per connection, never per render. The bearer never
+ * leaves this module: what the workspace holds is the minted URL.
+ */
+export const frameUrl = async (
+  token: string,
+  id: string,
+  door: Door,
+  arg?: string,
+): Promise<string> => {
+  const res = await fetch(`${API}/v1/sandboxes/${encodeURIComponent(id)}/${door}/ticket`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   });
-  if (!res.ok) throw new Error(`terminal ticket → ${res.status}`);
-  const body = (await res.json()) as { ticket?: string };
-  if (!body.ticket) throw new Error('terminal ticket → empty answer');
-  return body.ticket;
+  if (!res.ok) throw new Error(`${door} ticket → ${res.status}`);
+  const body = (await res.json()) as { url?: string };
+  if (!body.url) throw new Error(`${door} ticket → empty answer`);
+  return `${API}${body.url}` + (arg ? `&arg=${encodeURIComponent(arg)}` : '');
 };
-
-/** The framed terminal's address — ticket in the URL, bearer never. */
-export function sandboxTerminal(id: string, ticket: string, name: string): string {
-  return (
-    `${API}/v1/sandboxes/${encodeURIComponent(id)}/terminal` +
-    `?ticket=${encodeURIComponent(ticket)}&arg=${encodeURIComponent(name)}`
-  );
-}

@@ -34,7 +34,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Cloud, Columns2, Plus, Rows2, X } from 'lucide-react';
+import { Cloud, Columns2, Monitor, Plus, Rows2, X } from 'lucide-react';
 
 import {
   type Dir,
@@ -52,10 +52,12 @@ import {
   stackFor,
 } from '@/lib/tiles';
 import {
+  DEADLINE,
   DOT,
-  TERM_DEADLINE,
   type Binding,
-  isTermReady,
+  isReady,
+  label,
+  machineOf,
   mintName,
   rescued,
   shellUrl,
@@ -66,9 +68,13 @@ export interface TerminalHost {
   machine: string;
   /** The share URL `hanzo link` published. Absent ⇒ nothing to frame. */
   base?: string;
-  /** A dev sandbox's id. Its terminal URL is MINTED per open (single-use
-   *  ticket) rather than published, so a sandbox host has this and no base. */
+  /** A sandbox's id. Its URLs are MINTED per open (single-use ticket) rather
+   *  than published, so a sandbox host has this and no base. */
   sandbox?: string;
+  /** Whether this machine has a DISPLAY to watch. It is the machine's own
+   *  answer — a `desktop` sandbox runs an X server and a VNC server, the other
+   *  classes have neither — and never inferred from a name. */
+  screen?: boolean;
   status: string;
   label?: string;
 }
@@ -98,11 +104,12 @@ export function Workspace({
   onLaunch,
 }: {
   hosts: TerminalHost[];
-  /** A fresh framed-terminal URL for a sandbox pane. The caller owns the
-   *  credential; the workspace only ever holds the minted, ticket-bearing URL. */
-  mint?: (sandbox: string, shell: string) => Promise<string>;
-  /** Start a cloud machine, and answer the name it goes by here. */
-  onLaunch?: () => Promise<string>;
+  /** A fresh URL for a sandbox pane, for whatever that pane shows. The caller
+   *  owns the credential; the workspace only ever holds the minted,
+   *  ticket-bearing URL. */
+  mint?: (sandbox: string, what: Binding) => Promise<string>;
+  /** Start a cloud machine of one class, and answer the name it goes by here. */
+  onLaunch?: (kind: 'dev' | 'desktop') => Promise<string>;
 }) {
   // A machine with no `base` serves no terminal, and there is nothing to open on
   // one of those — except a sandbox, whose URL is minted on bind rather than
@@ -111,6 +118,10 @@ export function Workspace({
     () => hosts.filter((h) => (h.base || h.sandbox) && h.status !== 'offline'),
     [hosts],
   );
+  /** The live machines with a display. A linked machine has none to offer —
+   *  what `hanzo link` publishes is a terminal — so this is the sandboxes that
+   *  were started as desktops. */
+  const watchable = useMemo(() => live.filter((h) => h.screen), [live]);
 
   const [tile, setTile] = useState<Tile | null>(null);
   const [bind, setBind] = useState<Record<string, Binding>>({});
@@ -180,25 +191,36 @@ export function Workspace({
     [bind],
   );
 
-  /** Open a shell in a NEW pane beside `target` — or as the whole layout. */
-  const open = useCallback(
-    (machine: string, dir: Dir | null, target: string | null) => {
-      const id = `p${seq.current++}`;
-      const name = mintName(takenOn(machine));
-      setBind((b) => ({ ...b, [id]: { kind: 'shell', shell: { machine, name } } }));
-      setTile((t) => (t && target && dir ? splitPane(t, target, dir, id) : (t ?? pane(id))));
-      setFocus(id);
-    },
+  /** What a machine looks like in a pane, each way of looking at one. Two
+   *  functions and not a flag, because only one of them has a name to mint. */
+  const shellOn = useCallback(
+    (machine: string): Binding => ({
+      kind: 'shell',
+      shell: { machine, name: mintName(takenOn(machine)) },
+    }),
     [takenOn],
   );
+  const screenOn = useCallback((machine: string): Binding => ({ kind: 'screen', machine }), []);
 
-  /** Start a machine and open its first shell. The point of the button is the
-   *  terminal: a machine that arrives with nothing framed on it is a row in a
-   *  list, and you would have to go and ask for the shell you already asked for. */
-  const launch = useCallback(async () => {
-    if (!onLaunch) return;
-    open(await onLaunch(), focus ? 'row' : null, focus);
-  }, [onLaunch, open, focus]);
+  /** Open a NEW pane showing `what`, beside `target` — or as the whole layout. */
+  const open = useCallback((what: Binding, dir: Dir | null, target: string | null) => {
+    const id = `p${seq.current++}`;
+    setBind((b) => ({ ...b, [id]: what }));
+    setTile((t) => (t && target && dir ? splitPane(t, target, dir, id) : (t ?? pane(id))));
+    setFocus(id);
+  }, []);
+
+  /** Start a machine and open it. The point of the button is what you get to
+   *  look at: a machine that arrives with nothing framed on it is a row in a
+   *  list, and you would have to go and ask for the thing you already asked for. */
+  const launch = useCallback(
+    async (kind: 'dev' | 'desktop') => {
+      if (!onLaunch) return;
+      const machine = await onLaunch(kind);
+      open(kind === 'desktop' ? screenOn(machine) : shellOn(machine), focus ? 'row' : null, focus);
+    },
+    [onLaunch, open, focus, shellOn, screenOn],
+  );
 
   const doClose = useCallback((id: string) => {
     setTile((t) => (t ? closePane(t, id) : null));
@@ -303,7 +325,7 @@ export function Workspace({
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (!isTermReady(e.data)) return;
+      if (!isReady(e.data)) return;
       // The sender identifies the pane: a message is trusted only when it comes
       // from the window of a frame this workspace actually rendered. The origin
       // is not pinned because every machine publishes on its own tunnel host.
@@ -323,13 +345,21 @@ export function Workspace({
     if (!el) return;
     // Give the terminal a moment to boot before calling it absent — a rescue that
     // flashes over every pane on every load is its own defect.
-    const t = setTimeout(() => setWaited((w) => (w[id] ? w : { ...w, [id]: true })), TERM_DEADLINE);
+    const t = setTimeout(() => setWaited((w) => (w[id] ? w : { ...w, [id]: true })), DEADLINE);
     return () => clearTimeout(t);
   }, []);
 
   const refused = useMemo(() => rescued(waited, alive), [waited, alive]);
 
-  const [picking, setPicking] = useState<null | { dir: Dir | null; target: string | null }>(null);
+  // A pick is "which machine", and what to MAKE of the one picked comes with
+  // the question — so the same picker asks for a shell's machine and a
+  // screen's, and neither knows about the other.
+  const [picking, setPicking] = useState<null | {
+    make: (m: string) => Binding;
+    from: TerminalHost[];
+    dir: Dir | null;
+    target: string | null;
+  }>(null);
   const rendered = useMemo(() => order.filter((id) => bind[id]), [order, bind]);
 
   // Sandbox panes: the URL is minted, not published. Minted per PANE and kept
@@ -343,11 +373,12 @@ export function Workspace({
     if (!mint) return;
     for (const id of rendered) {
       const b = bind[id];
-      if (!b || b.kind !== 'shell') continue;
-      const h = hostOf(b.shell.machine);
+      const m = b && (b.kind === 'shell' || b.kind === 'screen') ? machineOf(b) : null;
+      if (!b || !m) continue;
+      const h = hostOf(m);
       if (!h?.sandbox || minted[id] || minting.current.has(id)) continue;
       minting.current.add(id);
-      mint(h.sandbox, b.shell.name)
+      mint(h.sandbox, b)
         .then((src) => setMinted((m) => ({ ...m, [id]: src })))
         // A failed mint leaves the pane on its "waiting" face; the deadline
         // then offers reconnect, which is the retry.
@@ -377,16 +408,30 @@ export function Workspace({
         </p>
         {/* The header is not rendered in this branch, and someone with no machine
             at all is exactly who has nowhere else to get one. */}
-        {onLaunch ? <Launch run={launch} /> : null}
+        {onLaunch ? (
+          <div className="flex items-center gap-1.5 text-xs">
+            <Launch run={() => launch('dev')} icon={<Cloud className="h-3.5 w-3.5" />} label="New cloud machine" busyLabel="Starting a machine…" />
+            <Launch run={() => launch('desktop')} icon={<Monitor className="h-3.5 w-3.5" />} label="New desktop" busyLabel="Starting a desktop…" />
+          </div>
+        ) : null}
       </div>
     );
   }
 
   /** Never make someone choose from a set of one. */
-  const openHere = (dir: Dir | null, target: string | null) => {
-    if (live.length === 1) open(live[0]!.machine, dir, target);
-    else setPicking({ dir, target });
+  const openHere = (make: (m: string) => Binding, from: TerminalHost[], dir: Dir | null, target: string | null) => {
+    if (from.length === 1) open(make(from[0]!.machine), dir, target);
+    else setPicking({ make, from, dir, target });
   };
+
+  /** A shell goes on any live machine. */
+  const openShell = (dir: Dir | null, target: string | null) => openHere(shellOn, live, dir, target);
+
+  /** A screen goes only where there IS one — and where there is none, the
+   *  button starts the machine that has one. One press, one meaning: show me a
+   *  desktop. */
+  const openScreen = (dir: Dir | null, target: string | null) =>
+    watchable.length ? openHere(screenOn, watchable, dir, target) : launch('desktop');
 
   return (
     <div className="flex h-full w-full flex-col gap-2">
@@ -394,16 +439,35 @@ export function Workspace({
       <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
         <button
           type="button"
-          onClick={() => openHere(focus ? 'row' : null, focus)}
+          onClick={() => openShell(focus ? 'row' : null, focus)}
           className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted"
         >
           <Plus className="h-3.5 w-3.5" /> New shell
         </button>
-        {onLaunch ? <Launch run={launch} /> : null}
+        {/* One button for the screen, whether or not a machine with one exists
+            yet: with a desktop live it opens it, without one it starts it. The
+            alternative — a disabled button beside a second button that makes it
+            work — is two controls for one intention. */}
+        {watchable.length || onLaunch ? (
+          <Launch
+            run={async () => openScreen(focus ? 'row' : null, focus)}
+            icon={<Monitor className="h-3.5 w-3.5" />}
+            label="Desktop"
+            busyLabel="Starting a desktop…"
+          />
+        ) : null}
+        {onLaunch ? (
+          <Launch
+            run={() => launch('dev')}
+            icon={<Cloud className="h-3.5 w-3.5" />}
+            label="New cloud machine"
+            busyLabel="Starting a machine…"
+          />
+        ) : null}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={() => focus && openHere('row', focus)}
+            onClick={() => focus && openShell('row', focus)}
             disabled={!focus}
             title="Split right"
             className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
@@ -413,7 +477,7 @@ export function Workspace({
           </button>
           <button
             type="button"
-            onClick={() => focus && openHere('col', focus)}
+            onClick={() => focus && openShell('col', focus)}
             disabled={!focus}
             title="Split down"
             className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
@@ -430,7 +494,7 @@ export function Workspace({
           {Array.from({ length: pages }, (_, i) => {
             const first = geo.rects.find((r) => Math.round(r.left / 100) === i);
             const b = first ? bind[first.id] : undefined;
-            const label = b && b.kind !== 'empty' ? `${b.shell.machine}·${b.shell.name}` : `${i + 1}`;
+            const name = b ? label(b) : String(i + 1);
             return (
               <button
                 key={i}
@@ -443,7 +507,7 @@ export function Workspace({
                   i === page ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'
                 }`}
               >
-                {label}
+                {name}
               </button>
             );
           })}
@@ -471,16 +535,21 @@ export function Workspace({
             if (!r) return null;
             const b = bind[id]!;
             const on = id === focus;
-            const shell = b.kind === 'empty' ? null : b.shell;
-            const host = shell ? hostOf(shell.machine) : undefined;
+            const machine = machineOf(b);
+            const host = machine ? hostOf(machine) : undefined;
+            const title = label(b);
             // A sandbox pane frames its minted, ticket-bearing URL; a linked
             // machine's pane derives from the published tunnel. `minted` is
             // per-pane state because the ticket is spent on first load —
             // deriving would re-spend it every render.
+            //
+            // A SCREEN IS ALWAYS MINTED. A tunnel publishes a terminal and
+            // nothing else, so a linked machine has no screen to derive — the
+            // pane waits, which is the truth about that machine.
             const url = host?.sandbox
               ? (minted[id] ?? null)
-              : host?.base && shell
-                ? shellUrl(host.base, shell.name)
+              : host?.base && b.kind === 'shell'
+                ? shellUrl(host.base, b.shell.name)
                 : null;
             // Every rect is page-relative; the track is `pages * 100%` wide, so a
             // page occupies `100/pages` of it.
@@ -511,12 +580,12 @@ export function Workspace({
                     }`}
                   />
                   <span className="truncate">
-                    {shell ? `${shell.machine} · ${shell.name}` : 'New shell'}
+                    {title}
                   </span>
                   <span className="ml-auto hidden items-center gap-1 sm:flex">
                     <button
                       type="button"
-                      onClick={() => openHere('row', id)}
+                      onClick={() => openShell('row', id)}
                       title="Split right"
                       className="inline-flex size-6 items-center justify-center rounded hover:bg-muted-foreground/20"
                     >
@@ -524,7 +593,7 @@ export function Workspace({
                     </button>
                     <button
                       type="button"
-                      onClick={() => openHere('col', id)}
+                      onClick={() => openShell('col', id)}
                       title="Split down"
                       className="inline-flex size-6 items-center justify-center rounded hover:bg-muted-foreground/20"
                     >
@@ -549,7 +618,7 @@ export function Workspace({
                     <iframe
                       data-pane={id}
                       src={url}
-                      title={shell ? `${shell.machine} · ${shell.name}` : 'terminal'}
+                      title={title}
                       className="absolute inset-0 h-full w-full bg-black"
                       // Scripts (a terminal is one), and `allow-same-origin` gives
                       // the frame ITS OWN origin — which ttyd needs for its socket
@@ -596,8 +665,9 @@ export function Workspace({
                     // which offers to sign you in to a terminal at `#`.
                     <div className="absolute inset-0 z-10 flex items-center justify-center px-4 text-center">
                       <p className="max-w-xs text-xs text-muted-foreground">
-                        Waiting for <span className="text-foreground">{b.shell.machine}</span> to
-                        serve a terminal. It appears here as soon as the machine links.
+                        Waiting for <span className="text-foreground">{machine}</span> to{' '}
+                        {b.kind === 'screen' ? 'show its screen' : 'serve a terminal'}. It appears
+                        here as soon as the machine is up.
                       </p>
                     </div>
                   ) : refused[id] ? (
@@ -608,8 +678,8 @@ export function Workspace({
                       // the sign-in, and opening a dead one teaches nothing.
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
                         <p className="max-w-xs text-xs text-muted-foreground">
-                          The terminal did not come up. Its ticket lasts thirty seconds —
-                          reconnecting mints a fresh one.
+                          {b.kind === 'screen' ? 'The desktop' : 'The terminal'} did not come up.
+                          Its ticket lasts thirty seconds — reconnecting mints a fresh one.
                         </p>
                         <button
                           type="button"
@@ -690,9 +760,9 @@ export function Workspace({
         {picking ? (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
             <Picker
-              hosts={live}
+              hosts={picking.from}
               onPick={(m) => {
-                open(m, picking.dir, picking.target);
+                open(picking.make(m), picking.dir, picking.target);
                 setPicking(null);
               }}
               onCancel={() => setPicking(null)}
@@ -713,7 +783,17 @@ export function Workspace({
  * plane, and a workspace full of working terminals is not broken because it is
  * down.
  */
-function Launch({ run }: { run: () => Promise<void> }) {
+function Launch({
+  run,
+  icon,
+  label,
+  busyLabel,
+}: {
+  run: () => Promise<void>;
+  icon: React.ReactNode;
+  label: string;
+  busyLabel: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   return (
@@ -730,7 +810,7 @@ function Launch({ run }: { run: () => Promise<void> }) {
         }}
         className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
       >
-        <Cloud className="h-3.5 w-3.5" /> {busy ? 'Starting a machine…' : 'New cloud machine'}
+        {icon} {busy ? busyLabel : label}
       </button>
       {failed ? <span className="truncate text-muted-foreground">{failed}</span> : null}
     </>

@@ -22,13 +22,13 @@ import {
   type SandboxMachine,
   type Session,
   createSandbox,
+  frameUrl,
   machineName,
   machines,
   sandboxes,
-  sandboxTerminal,
   sessions,
-  terminalTicket,
 } from '@/lib/api';
+import { type Binding } from '@/lib/panes';
 import { renew, session, signIn, signOut } from '@/lib/iam';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
@@ -122,18 +122,30 @@ export default function App() {
     // stable, unique machine name.
     for (const s of data.b) {
       const key = machineName(s);
-      if (!out.has(key)) out.set(key, { machine: key, sandbox: s.id, status: 'online' });
+      if (!out.has(key)) {
+        // `screen` is the machine's own class, not a guess: only a desktop
+        // sandbox runs an X server, so only a desktop has pixels to frame.
+        out.set(key, {
+          machine: key,
+          sandbox: s.id,
+          screen: s.class === 'desktop',
+          status: 'online',
+        });
+      }
     }
     return [...out.values()];
   }, [data]);
 
-  /** A fresh framed-terminal URL for a sandbox pane — ticket minted here, where
-   *  the token lives, so the workspace stays credential-free. */
+  /** A fresh URL for a sandbox pane — ticket minted here, where the token
+   *  lives, so the workspace stays credential-free. What the pane SHOWS picks
+   *  the door: a shell attaches to its tmux session by name, a screen has one
+   *  display and needs no name. */
   const mint = useCallback(
-    async (sandbox: string, shell: string) => {
+    async (sandbox: string, what: Binding) => {
       if (!token) throw new Error('signed out');
-      const ticket = await terminalTicket(token, sandbox);
-      return sandboxTerminal(sandbox, ticket, shell);
+      return what.kind === 'screen'
+        ? frameUrl(token, sandbox, 'screen')
+        : frameUrl(token, sandbox, 'terminal', what.kind === 'shell' ? what.shell.name : undefined);
     },
     [token],
   );
@@ -197,8 +209,8 @@ export default function App() {
             // opens a shell on the name it gets, and a pane can only mint a
             // ticket for a machine the registry has already handed back, so the
             // refresh is what stands between the two.
-            onLaunch={async () => {
-              const box = await createSandbox(token);
+            onLaunch={async (kind) => {
+              const box = await createSandbox(token, kind);
               await refresh(token);
               return machineName(box);
             }}
