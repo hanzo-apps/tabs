@@ -37,11 +37,11 @@ const FACTS = [
 export default function Marketing() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-20">
-      <p className="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">Hanzo Tabs</p>
-      <h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-neutral-50 sm:text-5xl">
+      <p className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--text-tertiary)]">Hanzo Tabs</p>
+      <h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
         Keep tabs on your agents.
       </h1>
-      <p className="mt-5 max-w-xl text-lg leading-relaxed text-neutral-400">
+      <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
         Your coding agents work in shells on real machines. Tabs puts every one of those shells in
         front of you — split, tiled, and reachable from anywhere you can open a browser.
       </p>
@@ -49,25 +49,25 @@ export default function Marketing() {
       <div className="mt-8 flex flex-wrap items-center gap-3">
         <Link
           href="/app"
-          className="inline-flex min-h-11 items-center rounded-lg bg-neutral-50 px-5 text-sm font-medium text-neutral-950 transition-colors hover:bg-white"
+          className="inline-flex min-h-11 items-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-[var(--primary-hover)]"
         >
           Open Tabs
         </Link>
         <a
           href="https://github.com/hanzoai/tabs"
-          className="inline-flex min-h-11 items-center rounded-lg border border-neutral-800 px-5 text-sm text-neutral-300 transition-colors hover:border-neutral-700 hover:text-neutral-50"
+          className="inline-flex min-h-11 items-center rounded-lg border border-border px-5 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-foreground"
         >
           Source
         </a>
       </div>
 
       {/* The one instruction that makes the product exist. */}
-      <div className="mt-14 rounded-xl border border-neutral-800 bg-neutral-950/60 p-5">
-        <p className="text-xs text-neutral-500">Link a machine, and it appears here.</p>
-        <pre className="mt-3 overflow-x-auto font-mono text-sm text-neutral-200">
+      <div className="mt-14 rounded-xl border border-border bg-background/60 p-5">
+        <p className="text-xs text-[var(--text-tertiary)]">Link a machine, and it appears here.</p>
+        <pre className="mt-3 overflow-x-auto font-mono text-sm text-foreground">
           <code>hanzo link</code>
         </pre>
-        <p className="mt-3 text-xs leading-relaxed text-neutral-500">
+        <p className="mt-3 text-xs leading-relaxed text-[var(--text-tertiary)]">
           Run it on a laptop, a workstation, a GPU box — anything with a shell. The machine keeps
           the connection; nothing is exposed to the network it sits on.
         </p>
@@ -76,18 +76,18 @@ export default function Marketing() {
       <dl className="mt-16 grid gap-x-10 gap-y-8 sm:grid-cols-2">
         {FACTS.map((f) => (
           <div key={f.k}>
-            <dt className="text-sm font-medium text-neutral-100">{f.k}</dt>
-            <dd className="mt-1.5 text-sm leading-relaxed text-neutral-400">{f.v}</dd>
+            <dt className="text-sm font-medium text-foreground">{f.k}</dt>
+            <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{f.v}</dd>
           </div>
         ))}
       </dl>
 
-      <footer className="mt-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-neutral-900 pt-6 text-xs text-neutral-600">
+      <footer className="mt-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-6 text-xs text-[var(--text-disabled)]">
         <span>MIT</span>
-        <a className="hover:text-neutral-400" href="https://hanzo.app">
+        <a className="hover:text-muted-foreground" href="https://hanzo.app">
           hanzo.app
         </a>
-        <a className="hover:text-neutral-400" href="https://github.com/hanzoai/tabs">
+        <a className="hover:text-muted-foreground" href="https://github.com/hanzoai/tabs">
           github.com/hanzoai/tabs
         </a>
         <span className="ml-auto">Hanzo AI</span>

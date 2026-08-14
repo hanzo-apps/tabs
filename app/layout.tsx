@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { colors } from '@hanzo/design';
 import './globals.css';
 
 export const metadata = {
@@ -14,17 +15,25 @@ export const metadata = {
 };
 
 export const viewport = {
-  themeColor: '#000000',
+  // The browser chrome paints this before any stylesheet loads, so it is the one
+  // colour that cannot be a var() — it has to be a literal. Taking it from the
+  // token module rather than typing one keeps it the SAME literal the page then
+  // paints, which is what stops the address bar and the page disagreeing.
+  themeColor: colors.background,
   // The workspace is full-bleed and the terminal owns the bottom edge.
   viewportFit: 'cover' as const,
   width: 'device-width',
   initialScale: 1,
 };
 
+// No theme class on <html>: the tokens ARE the dark values at :root, and
+// `.light` is what inverts them. A `dark` class selects nothing in either the
+// design system or Tailwind here, so carrying one only suggests a switch that
+// does not exist.
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-dvh bg-neutral-950 text-neutral-200 antialiased">{children}</body>
+    <html lang="en">
+      <body className="min-h-dvh bg-background text-foreground antialiased">{children}</body>
     </html>
   );
 }
