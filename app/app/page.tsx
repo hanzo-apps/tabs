@@ -177,8 +177,8 @@ export default function App() {
   if (!token) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-        <h1 className="text-xl font-semibold text-neutral-50">Sign in</h1>
-        <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+        <h1 className="text-xl font-semibold text-foreground">Sign in</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Tabs reads your machines with your own Hanzo identity. It has no backend, so
           nothing about your session is stored anywhere but this browser.
         </p>
@@ -192,12 +192,12 @@ export default function App() {
               setBusy(false);
             });
           }}
-          className="mt-5 min-h-11 rounded-lg bg-neutral-50 text-sm font-medium text-neutral-950 hover:bg-white disabled:opacity-60"
+          className="mt-5 min-h-11 rounded-lg bg-primary text-sm font-medium text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
         >
           {busy ? 'Taking you to hanzo.id…' : 'Continue with Hanzo'}
         </button>
         {error ? <p className="mt-3 text-xs text-amber-500">{error}</p> : null}
-        <Link href="/" className="mt-6 text-xs text-neutral-600 hover:text-neutral-400">
+        <Link href="/" className="mt-6 text-xs text-[var(--text-disabled)] hover:text-muted-foreground">
           ← What is this?
         </Link>
       </main>
@@ -206,8 +206,8 @@ export default function App() {
 
   return (
     <main className="flex h-dvh flex-col gap-2 p-2">
-      <header className="flex shrink-0 items-center gap-2 text-xs text-neutral-500">
-        <Link href="/" className="font-mono text-neutral-300 hover:text-neutral-50">
+      <header className="flex shrink-0 items-center gap-2 text-xs text-[var(--text-tertiary)]">
+        <Link href="/" className="font-mono text-[var(--text-secondary)] hover:text-foreground">
           Tabs
         </Link>
         {error ? <span className="truncate text-amber-500">{error}</span> : null}
@@ -218,7 +218,7 @@ export default function App() {
             setToken(null);
             setData(null);
           }}
-          className="ml-auto shrink-0 rounded px-2 py-1 hover:bg-neutral-900 hover:text-neutral-300"
+          className="ml-auto shrink-0 rounded px-2 py-1 hover:bg-muted hover:text-[var(--text-secondary)]"
         >
           Disconnect
         </button>
@@ -240,7 +240,7 @@ export default function App() {
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-neutral-600">
+          <div className="flex h-full items-center justify-center text-sm text-[var(--text-disabled)]">
             {error ? 'The registry is unavailable.' : 'Reading your machines…'}
           </div>
         )}
