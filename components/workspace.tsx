@@ -34,7 +34,7 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Cloud, Columns2, Loader2, Monitor, Plus, Rows2, X } from 'lucide-react';
+import { Cloud, Columns2, Loader2, Minus, Monitor, Plus, Rows2, X } from 'lucide-react';
 
 import {
   type Dir,
@@ -96,6 +96,33 @@ function load(): Saved | null {
   } catch {
     return null; // a corrupt layout is no layout, never a crash
   }
+}
+
+/**
+ * How big the type is, in every terminal at once.
+ *
+ * It is kept APART from the layout, under its own key, because they are answers
+ * to different questions: a layout is this workspace's arrangement and a person
+ * rearranges it all day, while type size is how their eyes work and should
+ * survive closing every pane they have.
+ *
+ * The terminal is a cross-origin frame, so this cannot be CSS — it is a message
+ * the pane's own page applies to its live terminal, on the reverse leg of the
+ * channel the readiness handshake already uses. Sending it on every change AND
+ * on every pane that reports ready is what makes one setting reach panes that
+ * open later, with nothing to remember.
+ */
+const SIZE_KEY = 'hanzo.tabs.size.v1';
+const SIZE = { min: 8, max: 32, step: 1, default: 12 } as const;
+
+function clampSize(n: number): number {
+  return Math.min(SIZE.max, Math.max(SIZE.min, Math.round(n)));
+}
+
+function loadSize(): number {
+  if (typeof window === 'undefined') return SIZE.default;
+  const n = Number(window.localStorage.getItem(SIZE_KEY));
+  return Number.isFinite(n) && n > 0 ? clampSize(n) : SIZE.default;
 }
 
 export function Workspace({
@@ -371,6 +398,21 @@ export function Workspace({
     return () => window.removeEventListener('message', onMessage);
   }, []);
 
+  // The reader's type size, told to every terminal that is up.
+  //
+  // It runs on `alive` as well as on the size itself, so a pane that boots after
+  // the setting was chosen is told as soon as it says it is ready — the same
+  // signal, used for the same reason, rather than a second notion of when a
+  // frame can be spoken to. A pane that never answers is never sent to, which is
+  // right: there is nothing there to hear it.
+  const [size, setSize] = useState(loadSize);
+  useEffect(() => {
+    window.localStorage.setItem(SIZE_KEY, String(size));
+    for (const [id, el] of Object.entries(frames.current)) {
+      if (alive[id]) el?.contentWindow?.postMessage({ source: 'hanzo-term', fontSize: size }, '*');
+    }
+  }, [size, alive]);
+
   const probe = useCallback((id: string, el: HTMLIFrameElement | null) => {
     frames.current[id] = el;
     if (!el) return;
@@ -497,6 +539,38 @@ export function Workspace({
           />
         ) : null}
         <span className="ml-auto flex shrink-0 items-center gap-1">
+          {/* Type size. Two buttons and the number they move — a stepper IS the
+              setting, so there is no panel to open and nothing to find. It reads
+              its own state, which a slider or a menu would each need a second
+              affordance to do. */}
+          <span className="mr-1 inline-flex items-center rounded-md border border-border">
+            <button
+              type="button"
+              onClick={() => setSize((n) => clampSize(n - SIZE.step))}
+              disabled={size <= SIZE.min}
+              title="Smaller text"
+              aria-label="Smaller text"
+              className="inline-flex min-h-9 items-center px-2 text-foreground hover:bg-muted disabled:opacity-40"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span
+              className="min-w-6 select-none text-center tabular-nums text-foreground"
+              title="Terminal text size"
+            >
+              {size}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSize((n) => clampSize(n + SIZE.step))}
+              disabled={size >= SIZE.max}
+              title="Larger text"
+              aria-label="Larger text"
+              className="inline-flex min-h-9 items-center px-2 text-foreground hover:bg-muted disabled:opacity-40"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </span>
           <button
             type="button"
             onClick={() => focus && openShell('row', focus)}
