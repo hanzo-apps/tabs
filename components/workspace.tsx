@@ -34,7 +34,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Cloud, Columns2, Plus, Rows2, X } from 'lucide-react';
+import { Cloud, Columns2, Loader2, Monitor, Plus, Rows2, X } from 'lucide-react';
 
 import {
   type Dir,
@@ -52,13 +52,15 @@ import {
   stackFor,
 } from '@/lib/tiles';
 import {
+  DEADLINE,
   DOT,
-  TERM_DEADLINE,
   type Binding,
-  isTermReady,
+  isReady,
+  label,
+  machineOf,
   mintName,
   rescued,
-  shellUrl,
+  restore,
 } from '@/lib/panes';
 
 /** A machine that can serve shells: its name and the tunnel its terminals live on. */
@@ -66,9 +68,13 @@ export interface TerminalHost {
   machine: string;
   /** The share URL `hanzo link` published. Absent ⇒ nothing to frame. */
   base?: string;
-  /** A dev sandbox's id. Its terminal URL is MINTED per open (single-use
-   *  ticket) rather than published, so a sandbox host has this and no base. */
+  /** A sandbox's id. Its URLs are MINTED per open (single-use ticket) rather
+   *  than published, so a sandbox host has this and no base. */
   sandbox?: string;
+  /** Whether this machine has a DISPLAY to watch. It is the machine's own
+   *  answer — a `desktop` sandbox runs an X server and a VNC server, the other
+   *  classes have neither — and never inferred from a name. */
+  screen?: boolean;
   status: string;
   label?: string;
 }
@@ -98,11 +104,13 @@ export function Workspace({
   onLaunch,
 }: {
   hosts: TerminalHost[];
-  /** A fresh framed-terminal URL for a sandbox pane. The caller owns the
-   *  credential; the workspace only ever holds the minted, ticket-bearing URL. */
-  mint?: (sandbox: string, shell: string) => Promise<string>;
-  /** Start a cloud machine, and answer the name it goes by here. */
-  onLaunch?: () => Promise<string>;
+  /** A fresh URL for a pane, for whatever that pane shows. EVERY pane, not only
+   *  a sandbox's: a machine you linked and a machine we started differ in who
+   *  serves the page and what credential opens it, and in nothing a layout cares
+   *  about. The caller owns the token; the workspace only ever holds the URL. */
+  mint?: (host: TerminalHost, what: Binding) => Promise<string>;
+  /** Start a cloud machine of one class, and answer the name it goes by here. */
+  onLaunch?: (kind: 'dev' | 'desktop') => Promise<string>;
 }) {
   // A machine with no `base` serves no terminal, and there is nothing to open on
   // one of those — except a sandbox, whose URL is minted on bind rather than
@@ -111,6 +119,10 @@ export function Workspace({
     () => hosts.filter((h) => (h.base || h.sandbox) && h.status !== 'offline'),
     [hosts],
   );
+  /** The live machines with a display. A linked machine has none to offer —
+   *  what `hanzo link` publishes is a terminal — so this is the sandboxes that
+   *  were started as desktops. */
+  const watchable = useMemo(() => live.filter((h) => h.screen), [live]);
 
   const [tile, setTile] = useState<Tile | null>(null);
   const [bind, setBind] = useState<Record<string, Binding>>({});
@@ -128,11 +140,12 @@ export function Workspace({
       const known = new Set(live.map((h) => h.machine));
       setBind(
         Object.fromEntries(
-          Object.entries(saved.bind).map(([id, b]) =>
+          Object.entries(saved.bind).map(([id, b]) => [
+            id,
             b.kind === 'shell' && !known.has(b.shell.machine)
-              ? [id, { kind: 'gone', shell: b.shell } as Binding]
-              : [id, b],
-          ),
+              ? ({ kind: 'gone', shell: b.shell } as Binding)
+              : restore(b),
+          ]),
         ),
       );
       setTile(saved.tree);
@@ -180,25 +193,57 @@ export function Workspace({
     [bind],
   );
 
-  /** Open a shell in a NEW pane beside `target` — or as the whole layout. */
-  const open = useCallback(
-    (machine: string, dir: Dir | null, target: string | null) => {
-      const id = `p${seq.current++}`;
-      const name = mintName(takenOn(machine));
-      setBind((b) => ({ ...b, [id]: { kind: 'shell', shell: { machine, name } } }));
-      setTile((t) => (t && target && dir ? splitPane(t, target, dir, id) : (t ?? pane(id))));
-      setFocus(id);
-    },
+  /** What a machine looks like in a pane, each way of looking at one. Two
+   *  functions and not a flag, because only one of them has a name to mint. */
+  const shellOn = useCallback(
+    (machine: string): Binding => ({
+      kind: 'shell',
+      shell: { machine, name: mintName(takenOn(machine)) },
+    }),
     [takenOn],
   );
+  const screenOn = useCallback((machine: string): Binding => ({ kind: 'screen', machine }), []);
 
-  /** Start a machine and open its first shell. The point of the button is the
-   *  terminal: a machine that arrives with nothing framed on it is a row in a
-   *  list, and you would have to go and ask for the shell you already asked for. */
-  const launch = useCallback(async () => {
-    if (!onLaunch) return;
-    open(await onLaunch(), focus ? 'row' : null, focus);
-  }, [onLaunch, open, focus]);
+  /** Open a NEW pane showing `what`, beside `target` — or as the whole layout.
+   *  Answers with the pane's id, so a caller still waiting on what goes in it
+   *  can settle that one box later. */
+  const open = useCallback((what: Binding, dir: Dir | null, target: string | null) => {
+    const id = `p${seq.current++}`;
+    setBind((b) => ({ ...b, [id]: what }));
+    setTile((t) => (t && target && dir ? splitPane(t, target, dir, id) : (t ?? pane(id))));
+    setFocus(id);
+    return id;
+  }, []);
+
+  /** Put `what` in a pane that is still open. A pane closed while its machine
+   *  was starting stays closed — an answer arriving late must not reopen a box
+   *  someone shut. */
+  const settle = useCallback((id: string, what: Binding) => {
+    setBind((b) => (b[id] ? { ...b, [id]: what } : b));
+  }, []);
+
+  /** Start a machine and open it. The point of the button is what you get to
+   *  look at: a machine that arrives with nothing framed on it is a row in a
+   *  list, and you would have to go and ask for the thing you already asked for. */
+  const launch = useCallback(
+    (kind: 'dev' | 'desktop') => {
+      if (!onLaunch) return;
+      const want = kind === 'desktop' ? 'screen' : 'shell';
+      // The pane opens on the CLICK, not on the answer. Provisioning is the
+      // long part, so waiting for it before drawing anything is a workspace
+      // that sits unchanged for the whole minute you are waiting.
+      const id = open({ kind: 'starting', want }, focus ? 'row' : null, focus);
+      onLaunch(kind)
+        .then((machine) => settle(id, want === 'screen' ? screenOn(machine) : shellOn(machine)))
+        .catch((e) =>
+          settle(id, {
+            kind: 'failed',
+            why: e instanceof Error ? e.message : 'could not start a machine',
+          }),
+        );
+    },
+    [onLaunch, open, settle, focus, shellOn, screenOn],
+  );
 
   const doClose = useCallback((id: string) => {
     setTile((t) => (t ? closePane(t, id) : null));
@@ -303,7 +348,7 @@ export function Workspace({
 
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
-      if (!isTermReady(e.data)) return;
+      if (!isReady(e.data)) return;
       // The sender identifies the pane: a message is trusted only when it comes
       // from the window of a frame this workspace actually rendered. The origin
       // is not pinned because every machine publishes on its own tunnel host.
@@ -323,41 +368,54 @@ export function Workspace({
     if (!el) return;
     // Give the terminal a moment to boot before calling it absent — a rescue that
     // flashes over every pane on every load is its own defect.
-    const t = setTimeout(() => setWaited((w) => (w[id] ? w : { ...w, [id]: true })), TERM_DEADLINE);
+    const t = setTimeout(() => setWaited((w) => (w[id] ? w : { ...w, [id]: true })), DEADLINE);
     return () => clearTimeout(t);
   }, []);
 
   const refused = useMemo(() => rescued(waited, alive), [waited, alive]);
 
-  const [picking, setPicking] = useState<null | { dir: Dir | null; target: string | null }>(null);
+  // A pick is "which machine", and what to MAKE of the one picked comes with
+  // the question — so the same picker asks for a shell's machine and a
+  // screen's, and neither knows about the other.
+  const [picking, setPicking] = useState<null | {
+    make: (m: string) => Binding;
+    from: TerminalHost[];
+    dir: Dir | null;
+    target: string | null;
+  }>(null);
   const rendered = useMemo(() => order.filter((id) => bind[id]), [order, bind]);
 
-  // Sandbox panes: the URL is minted, not published. Minted per PANE and kept
-  // until that pane reconnects — a ticket is spent by the frame's first load,
-  // so re-deriving the URL on render would hand the iframe a dead credential.
-  // In-flight ids are tracked outside state so a re-render mid-mint cannot
-  // start a second mint for the same pane (two tickets, one wasted).
+  // A PANE'S URL IS MINTED, NEVER DERIVED — for every machine, not only the
+  // ones we start. Minted per PANE and kept until that pane reconnects, because
+  // what the mint returns is spent: a sandbox's ticket by the frame's first
+  // load, a tunnel's session by nothing, but both are asked for with a
+  // credential this component deliberately does not hold. Re-deriving on render
+  // would hand the iframe a dead one.
+  //
+  // In-flight ids are tracked outside state so a re-render mid-mint cannot start
+  // a second mint for the same pane.
   const [minted, setMinted] = useState<Record<string, string>>({});
   const minting = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!mint) return;
     for (const id of rendered) {
       const b = bind[id];
-      if (!b || b.kind !== 'shell') continue;
-      const h = hostOf(b.shell.machine);
-      if (!h?.sandbox || minted[id] || minting.current.has(id)) continue;
+      const m = b && (b.kind === 'shell' || b.kind === 'screen') ? machineOf(b) : null;
+      if (!b || !m) continue;
+      const h = hostOf(m);
+      if (!h || minted[id] || minting.current.has(id)) continue;
       minting.current.add(id);
-      mint(h.sandbox, b.shell.name)
+      mint(h, b)
         .then((src) => setMinted((m) => ({ ...m, [id]: src })))
-        // A failed mint leaves the pane on its "waiting" face; the deadline
-        // then offers reconnect, which is the retry.
-        .catch(() => {})
+        // A pane whose URL never arrived is offered the way out immediately,
+        // rather than waiting out a deadline for a frame that was never made.
+        .catch(() => setWaited((w) => ({ ...w, [id]: true })))
         .finally(() => minting.current.delete(id));
     }
   }, [rendered, bind, hostOf, mint, minted]);
 
-  /** Reconnect a sandbox pane: forget the spent URL and the frame's history so
-   *  the mint effect runs again with a fresh ticket and the deadline re-arms. */
+  /** Reconnect a pane: forget the spent URL and the frame's history so the mint
+   *  effect runs again with a fresh credential and the deadline re-arms. */
   const reconnect = useCallback((id: string) => {
     const drop = <T,>(o: Record<string, T>): Record<string, T> => {
       const { [id]: _gone, ...rest } = o;
@@ -377,33 +435,62 @@ export function Workspace({
         </p>
         {/* The header is not rendered in this branch, and someone with no machine
             at all is exactly who has nowhere else to get one. */}
-        {onLaunch ? <Launch run={launch} /> : null}
+        {onLaunch ? (
+          <div className="flex items-center gap-1.5 text-xs">
+            <Act run={() => launch('dev')} icon={<Cloud className="h-3.5 w-3.5" />} label="New cloud machine" />
+            <Act run={() => launch('desktop')} icon={<Monitor className="h-3.5 w-3.5" />} label="New desktop" />
+          </div>
+        ) : null}
       </div>
     );
   }
 
   /** Never make someone choose from a set of one. */
-  const openHere = (dir: Dir | null, target: string | null) => {
-    if (live.length === 1) open(live[0]!.machine, dir, target);
-    else setPicking({ dir, target });
+  const openHere = (make: (m: string) => Binding, from: TerminalHost[], dir: Dir | null, target: string | null) => {
+    if (from.length === 1) open(make(from[0]!.machine), dir, target);
+    else setPicking({ make, from, dir, target });
   };
+
+  /** A shell goes on any live machine. */
+  const openShell = (dir: Dir | null, target: string | null) => openHere(shellOn, live, dir, target);
+
+  /** A screen goes only where there IS one — and where there is none, the
+   *  button starts the machine that has one. One press, one meaning: show me a
+   *  desktop. */
+  const openScreen = (dir: Dir | null, target: string | null) =>
+    watchable.length ? openHere(screenOn, watchable, dir, target) : launch('desktop');
 
   return (
     <div className="flex h-full w-full flex-col gap-2">
       {/* One row. Actions, not a status report. */}
       <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <button
-          type="button"
-          onClick={() => openHere(focus ? 'row' : null, focus)}
-          className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted"
-        >
-          <Plus className="h-3.5 w-3.5" /> New shell
-        </button>
-        {onLaunch ? <Launch run={launch} /> : null}
+        <Act
+          run={() => openShell(focus ? 'row' : null, focus)}
+          icon={<Plus className="h-3.5 w-3.5" />}
+          label="New shell"
+        />
+        {/* One button for the screen, whether or not a machine with one exists
+            yet: with a desktop live it opens it, without one it starts it. The
+            alternative — a disabled button beside a second button that makes it
+            work — is two controls for one intention. */}
+        {watchable.length || onLaunch ? (
+          <Act
+            run={() => openScreen(focus ? 'row' : null, focus)}
+            icon={<Monitor className="h-3.5 w-3.5" />}
+            label="Desktop"
+          />
+        ) : null}
+        {onLaunch ? (
+          <Act
+            run={() => launch('dev')}
+            icon={<Cloud className="h-3.5 w-3.5" />}
+            label="New cloud machine"
+          />
+        ) : null}
         <span className="ml-auto flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={() => focus && openHere('row', focus)}
+            onClick={() => focus && openShell('row', focus)}
             disabled={!focus}
             title="Split right"
             className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
@@ -413,7 +500,7 @@ export function Workspace({
           </button>
           <button
             type="button"
-            onClick={() => focus && openHere('col', focus)}
+            onClick={() => focus && openShell('col', focus)}
             disabled={!focus}
             title="Split down"
             className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
@@ -430,7 +517,7 @@ export function Workspace({
           {Array.from({ length: pages }, (_, i) => {
             const first = geo.rects.find((r) => Math.round(r.left / 100) === i);
             const b = first ? bind[first.id] : undefined;
-            const label = b && b.kind !== 'empty' ? `${b.shell.machine}·${b.shell.name}` : `${i + 1}`;
+            const name = b ? label(b) : String(i + 1);
             return (
               <button
                 key={i}
@@ -443,7 +530,7 @@ export function Workspace({
                   i === page ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'
                 }`}
               >
-                {label}
+                {name}
               </button>
             );
           })}
@@ -471,17 +558,14 @@ export function Workspace({
             if (!r) return null;
             const b = bind[id]!;
             const on = id === focus;
-            const shell = b.kind === 'empty' ? null : b.shell;
-            const host = shell ? hostOf(shell.machine) : undefined;
-            // A sandbox pane frames its minted, ticket-bearing URL; a linked
-            // machine's pane derives from the published tunnel. `minted` is
-            // per-pane state because the ticket is spent on first load —
-            // deriving would re-spend it every render.
-            const url = host?.sandbox
-              ? (minted[id] ?? null)
-              : host?.base && shell
-                ? shellUrl(host.base, shell.name)
-                : null;
+            const machine = machineOf(b);
+            const host = machine ? hostOf(machine) : undefined;
+            const title = label(b);
+            // One source, whatever the machine. A pane that has no URL yet is a
+            // mint still in flight or one that could not be made — a tunnel
+            // publishes a terminal and nothing else, so a linked machine has no
+            // screen and never gets one.
+            const url = minted[id] ?? null;
             // Every rect is page-relative; the track is `pages * 100%` wide, so a
             // page occupies `100/pages` of it.
             const left = paging ? r.left / pages : r.left;
@@ -511,12 +595,12 @@ export function Workspace({
                     }`}
                   />
                   <span className="truncate">
-                    {shell ? `${shell.machine} · ${shell.name}` : 'New shell'}
+                    {title}
                   </span>
                   <span className="ml-auto hidden items-center gap-1 sm:flex">
                     <button
                       type="button"
-                      onClick={() => openHere('row', id)}
+                      onClick={() => openShell('row', id)}
                       title="Split right"
                       className="inline-flex size-6 items-center justify-center rounded hover:bg-muted-foreground/20"
                     >
@@ -524,7 +608,7 @@ export function Workspace({
                     </button>
                     <button
                       type="button"
-                      onClick={() => openHere('col', id)}
+                      onClick={() => openShell('col', id)}
                       title="Split down"
                       className="inline-flex size-6 items-center justify-center rounded hover:bg-muted-foreground/20"
                     >
@@ -549,7 +633,7 @@ export function Workspace({
                     <iframe
                       data-pane={id}
                       src={url}
-                      title={shell ? `${shell.machine} · ${shell.name}` : 'terminal'}
+                      title={title}
                       className="absolute inset-0 h-full w-full bg-black"
                       // Scripts (a terminal is one), and `allow-same-origin` gives
                       // the frame ITS OWN origin — which ttyd needs for its socket
@@ -574,6 +658,28 @@ export function Workspace({
                         onCancel={() => doClose(id)}
                       />
                     </div>
+                  ) : b.kind === 'starting' ? (
+                    // The loader lives HERE, in the box the machine is for —
+                    // not on the button that asked. It is what tells you the
+                    // click landed, and it is where the terminal appears.
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      <p className="max-w-xs text-xs text-muted-foreground">
+                        Starting {b.want === 'screen' ? 'a desktop' : 'a machine'}. Its{' '}
+                        {b.want === 'screen' ? 'screen' : 'terminal'} opens here.
+                      </p>
+                    </div>
+                  ) : b.kind === 'failed' ? (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                      <p className="max-w-xs text-xs text-muted-foreground">{b.why}</p>
+                      <button
+                        type="button"
+                        onClick={() => doClose(id)}
+                        className="min-h-9 rounded-md border border-border px-3 text-xs hover:bg-muted"
+                      >
+                        Close pane
+                      </button>
+                    </div>
                   ) : b.kind === 'gone' ? (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
                       <p className="text-xs text-muted-foreground">
@@ -596,45 +702,30 @@ export function Workspace({
                     // which offers to sign you in to a terminal at `#`.
                     <div className="absolute inset-0 z-10 flex items-center justify-center px-4 text-center">
                       <p className="max-w-xs text-xs text-muted-foreground">
-                        Waiting for <span className="text-foreground">{b.shell.machine}</span> to
-                        serve a terminal. It appears here as soon as the machine links.
+                        Waiting for <span className="text-foreground">{machine}</span> to{' '}
+                        {b.kind === 'screen' ? 'show its screen' : 'serve a terminal'}. It appears
+                        here as soon as the machine is up.
                       </p>
                     </div>
                   ) : refused[id] ? (
-                    host?.sandbox ? (
-                      // A sandbox frame that never said ready is a spent or
-                      // expired ticket — the URL cannot be reopened, only
-                      // re-minted. Never the sign-in tab here: the ticket IS
-                      // the sign-in, and opening a dead one teaches nothing.
-                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
-                        <p className="max-w-xs text-xs text-muted-foreground">
-                          The terminal did not come up. Its ticket lasts thirty seconds —
-                          reconnecting mints a fresh one.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => reconnect(id)}
-                          className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm text-foreground hover:bg-muted"
-                        >
-                          Reconnect
-                        </button>
-                      </div>
-                    ) : (
+                    // A frame that never said ready is a credential that no
+                    // longer opens anything — a spent ticket, an aged session —
+                    // and the URL cannot be reopened, only asked for again.
+                    // NEVER a sign-in here: the mint IS the sign-in, and sending
+                    // someone to a second one is what this stopped doing.
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
                       <p className="max-w-xs text-xs text-muted-foreground">
-                        This terminal needs a one-time sign-in on its own domain. The gate refuses
-                        to be shown inside a frame, so it opens in a tab — once.
+                        {b.kind === 'screen' ? 'The desktop' : 'The terminal'} did not come up.
+                        Reconnecting asks for a fresh credential and tries again.
                       </p>
-                      <a
-                        href={url ?? '#'}
-                        target="_blank"
-                        rel="noreferrer noopener"
+                      <button
+                        type="button"
+                        onClick={() => reconnect(id)}
                         className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm text-foreground hover:bg-muted"
                       >
-                        Sign in to this terminal ↗
-                      </a>
+                        Reconnect
+                      </button>
                     </div>
-                    )
                   ) : null}
                 </div>
               </div>
@@ -690,9 +781,9 @@ export function Workspace({
         {picking ? (
           <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
             <Picker
-              hosts={live}
+              hosts={picking.from}
               onPick={(m) => {
-                open(m, picking.dir, picking.target);
+                open(picking.make(m), picking.dir, picking.target);
                 setPicking(null);
               }}
               onCancel={() => setPicking(null)}
@@ -705,35 +796,22 @@ export function Workspace({
 }
 
 /**
- * Ask for a machine.
+ * One labelled button in the action row.
  *
- * A launch is a request in flight, and it keeps its own state because nothing
- * else here has a reason to re-render while it is one. Failure is shown next to
- * the button that caused it rather than banner-wide: provisioning is a second
- * plane, and a workspace full of working terminals is not broken because it is
- * down.
+ * It carries no busy state and no failure of its own, and that is the point: a
+ * button that asks for a machine opens the pane the machine is for, so the wait
+ * and the reason it failed both belong to that pane. Keeping a spinner here too
+ * would say the same thing twice, in the one place you are not looking.
  */
-function Launch({ run }: { run: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
+function Act({ run, icon, label }: { run: () => void; icon: React.ReactNode; label: string }) {
   return (
-    <>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          setFailed(null);
-          run()
-            .catch((e) => setFailed(e instanceof Error ? e.message : 'could not launch a machine'))
-            .finally(() => setBusy(false));
-        }}
-        className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
-      >
-        <Cloud className="h-3.5 w-3.5" /> {busy ? 'Starting a machine…' : 'New cloud machine'}
-      </button>
-      {failed ? <span className="truncate text-muted-foreground">{failed}</span> : null}
-    </>
+    <button
+      type="button"
+      onClick={run}
+      className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted"
+    >
+      {icon} {label}
+    </button>
   );
 }
 

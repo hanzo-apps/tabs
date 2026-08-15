@@ -15,13 +15,13 @@ export default function Callback() {
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 text-center">
       {error ? (
         <>
-          <p className="text-sm text-neutral-300">{error}</p>
-          <a href="/app" className="mt-4 text-xs text-neutral-500 hover:text-neutral-300">
+          <p className="text-sm text-[var(--text-secondary)]">{error}</p>
+          <a href="/app" className="mt-4 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
             Try again
           </a>
         </>
       ) : (
-        <p className="text-sm text-neutral-500">Signing you in…</p>
+        <p className="text-sm text-[var(--text-tertiary)]">Signing you in…</p>
       )}
     </main>
   );
