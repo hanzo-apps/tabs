@@ -27,6 +27,47 @@ export interface Session {
   updatedAt?: string;
 }
 
+/**
+ * A refusal, carrying the platform's own word for it.
+ *
+ * `code` is what the caller can BRANCH on — being out of credit wants a
+ * different answer from a full node, and telling them apart by reading the
+ * sentence would break the first time the sentence is reworded.
+ */
+export class Refusal extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'Refusal';
+  }
+}
+
+/** Out of credit, or past the org's spend cap. Both are answered the same way —
+ *  put money on it, or bring a machine of your own — so they are one question. */
+export const unfunded = (e: unknown): boolean =>
+  e instanceof Refusal && (e.code === 'insufficient_balance' || e.code === 'spend_cap_exceeded');
+
+/**
+ * Read a refusal off a response, in EITHER shape the fleet sends.
+ *
+ * The money wire answers `{error:{code,message}}` — an OBJECT — while other
+ * doors answer `{error:"..."}`. Reading only the flat one coerced the nested
+ * object into a string, so the one refusal a person can actually act on
+ * rendered as `[object Object]` beside a button that had just failed.
+ */
+async function refusal(res: Response, fallback: string): Promise<Refusal> {
+  const body = (await res.json().catch(() => null)) as
+    | { error?: string | { code?: string; message?: string } }
+    | null;
+  const e = body?.error;
+  return typeof e === 'object' && e !== null
+    ? new Refusal(res.status, e.code ?? '', e.message || fallback)
+    : new Refusal(res.status, '', e || fallback);
+}
+
 async function read<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -120,14 +161,11 @@ export const createSandbox = async (token: string, kind: Class = 'dev'): Promise
     body: JSON.stringify({ class: kind, project }),
     cache: 'no-store',
   });
-  // Starting a machine fails for reasons a person can act on — an image that
-  // will not pull, a project already held, an org at its ceiling — and the
-  // server says which. A bare status code next to the button would name none of
-  // them.
-  if (!res.ok) {
-    const why = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(why?.error || `new machine → ${res.status}`);
-  }
+  // Starting a machine fails for reasons a person can act on — no credit, an
+  // image that will not pull, a project already held, an org at its ceiling —
+  // and the server says which. A bare status code next to the button would name
+  // none of them, and the CODE is what lets the pane offer the right remedy.
+  if (!res.ok) throw await refusal(res, `new machine → ${res.status}`);
   return (await res.json()) as SandboxMachine;
 };
 

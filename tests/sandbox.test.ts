@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { API, createSandbox, frameUrl, grant, machineName } from '@/lib/api';
+import { API, Refusal, createSandbox, frameUrl, grant, machineName, unfunded } from '@/lib/api';
 
 /**
  * A sandbox joins the workspace as a machine whose URLs are MINTED, not
@@ -164,14 +164,14 @@ describe('a sandbox is named by its project', () => {
  */
 describe('a new cloud machine', () => {
   const calls: { url: string; init?: RequestInit }[] = [];
-  const answer = (live: unknown[], made: unknown, ok = true) => {
+  const answer = (live: unknown[], made: unknown, ok = true, status = ok ? 201 : 503) => {
     calls.length = 0;
     global.fetch = (async (url: string, init?: RequestInit) => {
       calls.push({ url: String(url), init });
       const body = init?.method === 'POST' ? made : { sandboxes: live };
       return {
         ok: init?.method === 'POST' ? ok : true,
-        status: ok ? 201 : 503,
+        status,
         json: async () => body,
       };
     }) as unknown as typeof fetch;
@@ -214,6 +214,41 @@ describe('a new cloud machine', () => {
   it("carries the server's reason, because a bare status code names none of them", async () => {
     answer([], { error: 'start sandbox: pod not running after 2m0s' }, false);
     await expect(createSandbox('t')).rejects.toThrow('pod not running after 2m0s');
+  });
+
+  // The refusal a person can actually act on, and the one the fleet spells
+  // DIFFERENTLY from every other: money answers a NESTED {error:{code,message}}
+  // where other doors answer a flat {error:"..."}. Reading only the flat shape
+  // coerced that object into a string, so an org out of credit was told
+  // "[object Object]" beside a button that had just failed.
+  it('reads the money refusal, which is an object and not a sentence', async () => {
+    answer(
+      [],
+      { error: { code: 'insufficient_balance', message: 'Add credit to start a machine' } },
+      false,
+      402,
+    );
+    const e = await createSandbox('t').catch((x) => x);
+    expect(e).toBeInstanceOf(Refusal);
+    expect(e.message).toBe('Add credit to start a machine');
+    expect(e.message).not.toContain('object Object');
+    expect(e.code).toBe('insufficient_balance');
+    expect(e.status).toBe(402);
+    // The whole point of carrying the CODE: the pane branches on it rather than
+    // on the sentence, which is free to be reworded.
+    expect(unfunded(e)).toBe(true);
+  });
+
+  it('a spend cap is answered the same way — put money on it, or bring a machine', async () => {
+    answer([], { error: { code: 'spend_cap_exceeded', message: 'Monthly cap reached' } }, false, 402);
+    expect(unfunded(await createSandbox('t').catch((x) => x))).toBe(true);
+  });
+
+  it('every other refusal is NOT a money one, so it offers no remedy it cannot keep', async () => {
+    answer([], { error: 'start sandbox: pod not running after 2m0s' }, false, 503);
+    const e = await createSandbox('t').catch((x) => x);
+    expect(e.message).toContain('pod not running');
+    expect(unfunded(e)).toBe(false);
   });
 
   it('never sends the bearer to anything but the API', async () => {

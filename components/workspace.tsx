@@ -51,6 +51,11 @@ import {
   stableOrder,
   stackFor,
 } from '@/lib/tiles';
+// One import, and it is a PURE READING of an error — no origin, no token, no
+// request. The workspace still holds no credential; what it gains is the
+// platform's own word for "no money", which is the one failure whose remedy
+// differs from every other.
+import { unfunded } from '@/lib/api';
 import {
   DEADLINE,
   DOT,
@@ -274,6 +279,7 @@ export function Workspace({
           settle(id, {
             kind: 'failed',
             why: e instanceof Error ? e.message : 'could not start a machine',
+            unfunded: unfunded(e),
           }),
         );
     },
@@ -760,6 +766,19 @@ export function Workspace({
                   ) : b.kind === 'failed' ? (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
                       <p className="max-w-xs text-xs text-muted-foreground">{b.why}</p>
+                      {/* Out of credit is the ONE failure here with a remedy the
+                          person already holds: a cloud machine is ours and costs
+                          money, a linked one is theirs and costs nothing, and
+                          tabs drives both identically. Saying only "insufficient
+                          balance" beside a Close button reads as a dead end when
+                          the workspace still works. */}
+                      {b.unfunded ? (
+                        <p className="max-w-xs text-xs text-muted-foreground">
+                          A cloud machine is ours and costs credit. One of yours costs nothing —
+                          run <code className="font-mono text-foreground">hanzo link</code> on it
+                          and its shell opens here.
+                        </p>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => doClose(id)}

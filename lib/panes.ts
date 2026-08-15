@@ -43,8 +43,10 @@ export type Binding =
    * be shown the moment it answers.
    */
   | { kind: 'starting'; want: 'shell' | 'screen' }
-  /** No machine came. The pane keeps the reason, next to the space it was for. */
-  | { kind: 'failed'; why: string }
+  /** No machine came. The pane keeps the reason, and whether the reason was
+   *  MONEY — because that one has a remedy the others do not, and a person out
+   *  of credit still has a machine of their own to bring. */
+  | { kind: 'failed'; why: string; unfunded?: boolean }
   /** The machine went away. The pane STAYS, because tmux is still holding the
    *  session and the layout is the reader's, not a function of someone's uptime. */
   | { kind: 'gone'; shell: Shell };
