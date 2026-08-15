@@ -33,7 +33,7 @@
  *    and keeps stacked ones stacked. Same tree, same renderer.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cloud, Columns2, Loader2, Monitor, Plus, Rows2, X } from 'lucide-react';
 
 import {
@@ -102,8 +102,16 @@ export function Workspace({
   hosts,
   mint,
   onLaunch,
+  start,
+  end,
 }: {
   hosts: TerminalHost[];
+  /** What sits at the ends of the action row — the brand, and the way out.
+   *  They are the page's, not the workspace's, but they are three controls
+   *  wide and a row of their own cost every pane 28px of terminal. A workspace
+   *  is measured in rows you can read, so the row they belong in is this one. */
+  start?: ReactNode;
+  end?: ReactNode;
   /** A fresh URL for a pane, for whatever that pane shows. EVERY pane, not only
    *  a sandbox's: a machine you linked and a machine we started differ in who
    *  serves the page and what credential opens it, and in nothing a layout cares
@@ -461,9 +469,10 @@ export function Workspace({
     watchable.length ? openHere(screenOn, watchable, dir, target) : launch('desktop');
 
   return (
-    <div className="flex h-full w-full flex-col gap-2">
+    <div className="flex h-full w-full flex-col gap-1.5">
       {/* One row. Actions, not a status report. */}
       <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+        {start}
         <Act
           run={() => openShell(focus ? 'row' : null, focus)}
           icon={<Plus className="h-3.5 w-3.5" />}
@@ -508,6 +517,7 @@ export function Workspace({
             <Rows2 className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Down</span>
           </button>
+          {end}
         </span>
       </div>
 
@@ -583,8 +593,12 @@ export function Workspace({
                   height: `${r.height}%`,
                 }}
               >
+                {/* A pane's name bar. It is chrome around the only thing on the
+                    page worth reading, so it is as short as a touch target
+                    allows and no shorter — every pixel here is a row of
+                    terminal, times the number of panes. */}
                 <div
-                  className={`flex h-9 shrink-0 items-center gap-1.5 px-2 text-xs ${
+                  className={`flex h-7 shrink-0 items-center gap-1.5 px-2 text-xs ${
                     on ? 'bg-muted text-foreground' : 'bg-card text-muted-foreground'
                   }`}
                 >
@@ -745,7 +759,7 @@ export function Workspace({
                 }}
                 role="separator"
                 aria-orientation={d.dir === 'row' ? 'vertical' : 'horizontal'}
-                className={`absolute z-20 touch-none bg-transparent hover:bg-foreground/20 ${
+                className={`group absolute z-20 touch-none bg-transparent ${
                   d.dir === 'row'
                     ? 'w-3 -translate-x-1/2 cursor-col-resize'
                     : 'h-6 -translate-y-1/2 cursor-row-resize sm:h-3'
@@ -758,11 +772,16 @@ export function Workspace({
                 }}
               >
                 {/* A visible grabber: a touch divider you cannot see is one that
-                    does not exist. */}
+                    does not exist. What it LOOKS like and what it CATCHES are
+                    separate — the hit area above stays a thumb wide, while the
+                    mark is a hairline, because a seam between two terminals
+                    should read as a seam and not as a third thing in the
+                    window. It brightens on hover, where the pointer already
+                    is. */}
                 <span
                   aria-hidden
-                  className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/25 ${
-                    d.dir === 'row' ? 'h-8 w-[3px]' : 'h-[3px] w-8'
+                  className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/20 transition-colors group-hover:bg-foreground/40 ${
+                    d.dir === 'row' ? 'h-6 w-px' : 'h-px w-6'
                   }`}
                 />
               </div>

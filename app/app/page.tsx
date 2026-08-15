@@ -205,30 +205,40 @@ export default function App() {
   }
 
   return (
-    <main className="flex h-dvh flex-col gap-2 p-2">
-      <header className="flex shrink-0 items-center gap-2 text-xs text-[var(--text-tertiary)]">
-        <Link href="/" className="font-mono text-[var(--text-secondary)] hover:text-foreground">
-          Tabs
-        </Link>
-        {error ? <span className="truncate text-amber-500">{error}</span> : null}
-        <button
-          type="button"
-          onClick={() => {
-            void signOut();
-            setToken(null);
-            setData(null);
-          }}
-          className="ml-auto shrink-0 rounded px-2 py-1 hover:bg-muted hover:text-[var(--text-secondary)]"
-        >
-          Disconnect
-        </button>
-      </header>
-
+    <main className="flex h-dvh flex-col p-1.5">
       <div className="min-h-0 flex-1">
         {data ? (
           <Workspace
             hosts={hosts}
             mint={mint}
+            // The brand and the way out ride in the workspace's action row.
+            // They were a row of their own, which cost every pane ~28px of
+            // terminal for two controls that fit in the gap beside the splits —
+            // and a workspace is measured in rows you can read.
+            start={
+              <Link
+                href="/"
+                className="shrink-0 font-mono text-[var(--text-secondary)] hover:text-foreground"
+              >
+                Tabs
+              </Link>
+            }
+            end={
+              <>
+                {error ? <span className="truncate text-amber-500">{error}</span> : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    void signOut();
+                    setToken(null);
+                    setData(null);
+                  }}
+                  className="shrink-0 rounded px-2 py-1 hover:bg-muted hover:text-[var(--text-secondary)]"
+                >
+                  Disconnect
+                </button>
+              </>
+            }
             // Started, then read back, then named — in that order. The workspace
             // opens a shell on the name it gets, and a pane can only mint a
             // ticket for a machine the registry has already handed back, so the
