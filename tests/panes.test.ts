@@ -135,9 +135,21 @@ describe('a pane bound to a screen is still bound to a machine', () => {
     expect(machineOf({ kind: 'empty' })).toBeNull();
   });
 
+  it('names the machine and which of its faces, so a pane needs no key', () => {
+    // The shape: <machine> · <face>. Both halves are numbered, so neither has
+    // to be recognised as the odd one — `tabs · hanzo` was two bare nouns and
+    // told you neither which box nor which shell.
+    expect(label({ kind: 'shell', shell: { machine: 'cloud-2', name: 'shell-1' } })).toBe(
+      'cloud-2 · shell-1',
+    );
+    expect(label({ kind: 'screen', machine: 'desk-1' })).toBe('desk-1 · desk');
+  });
+
   it('says what it is showing, so the header and the frame agree', () => {
-    expect(label({ kind: 'shell', shell: { machine: 'desk', name: 'build' } })).toBe('desk · build');
-    expect(label({ kind: 'screen', machine: 'desk' })).toBe('desk · desktop');
+    expect(label({ kind: 'shell', shell: { machine: 'cloud-2', name: 'build' } })).toBe(
+      'cloud-2 · build',
+    );
+    expect(label({ kind: 'screen', machine: 'desk-1' })).toBe('desk-1 · desk');
     expect(label({ kind: 'empty' })).toBe('New shell');
   });
 });

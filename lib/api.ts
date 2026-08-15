@@ -75,13 +75,18 @@ export const sandboxes = (token: string) =>
 
 /** How a sandbox names itself in the workspace. Its project is what its DISK is
  *  keyed on, so it is the name that means the same box tomorrow. */
-export const machineName = (s: SandboxMachine) => s.project || `box-${s.id.slice(0, 6)}`;
+export const machineName = (s: SandboxMachine) => s.project || `cloud-${s.id.slice(0, 6)}`;
 
-/** What a first cloud machine of each class is called; the ones after it count
- *  up. Two names because the project keys the DISK and the server keeps one
- *  live sandbox per project — so a desktop that borrowed the shell machines'
- *  name would be the same box's second attempt rather than a second box. */
-const PROJECT: Record<Class, string> = { dev: 'tabs', desktop: 'desk' };
+/** What a machine of each class is called, before its number. It says what the
+ *  machine IS — one you shell into, one with a screen — where the name used to
+ *  say which product opened it, so a workspace of three read `tabs`, `tabs-2`,
+ *  `tabs-3` and told you nothing.
+ *
+ *  Two stems, not one, because the project keys the DISK and machines are
+ *  counted against the ones RUNNING: a stopped `cloud-2` still owns its disk, so
+ *  a desktop later handed that name would mount a shell machine's home and call
+ *  it a screen. */
+const STEM: Record<Class, string> = { dev: 'cloud', desktop: 'desk' };
 
 /** The two machines tabs starts. `dev` is the one you shell into — a toolchain,
  *  a home, and a disk that outlives the lease; `desktop` is that plus an X
@@ -103,9 +108,12 @@ export type Class = 'dev' | 'desktop';
  */
 export const createSandbox = async (token: string, kind: Class = 'dev'): Promise<SandboxMachine> => {
   const taken = new Set((await sandboxes(token)).map(machineName));
-  const first = PROJECT[kind];
-  let project = first;
-  for (let n = 2; taken.has(project); n++) project = `${first}-${n}`;
+  // Every machine carries its number, the first one included: `cloud` beside
+  // `cloud-2` reads as a different kind of thing rather than the one before it.
+  // The bound is the pigeonhole — among n machines, one of n+1 names is free.
+  const stem = STEM[kind];
+  let project = `${stem}-1`;
+  for (let n = 2; taken.has(project); n++) project = `${stem}-${n}`;
   const res = await fetch(`${API}/v1/sandboxes`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },

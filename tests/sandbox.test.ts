@@ -149,11 +149,11 @@ describe('the workspace mints once per pane', () => {
 
 describe('a sandbox is named by its project', () => {
   it('goes by the project, which is what its disk is keyed on', () => {
-    expect(machineName({ id: 'abcdef123456', status: 'running', project: 'tabs' })).toBe('tabs');
+    expect(machineName({ id: 'abcdef123456', status: 'running', project: 'cloud-1' })).toBe('cloud-1');
   });
 
   it('falls back to its id, so a projectless box is still openable', () => {
-    expect(machineName({ id: 'abcdef123456', status: 'running' })).toBe('box-abcdef');
+    expect(machineName({ id: 'abcdef123456', status: 'running' })).toBe('cloud-abcdef');
   });
 });
 
@@ -178,37 +178,37 @@ describe('a new cloud machine', () => {
   };
 
   it('asks for a dev sandbox — the machine you shell into, not a scratch pod', async () => {
-    answer([], { id: 'b1', status: 'running', project: 'tabs' });
+    answer([], { id: 'b1', status: 'running', project: 'cloud-1' });
     await createSandbox('t');
     const post = calls.find((c) => c.init?.method === 'POST')!;
     expect(post.url).toBe(`${API}/v1/sandboxes`);
-    expect(JSON.parse(String(post.init!.body))).toEqual({ class: 'dev', project: 'tabs' });
+    expect(JSON.parse(String(post.init!.body))).toEqual({ class: 'dev', project: 'cloud-1' });
   });
 
   it('asks for a desktop under its OWN name — the project is what the disk is keyed on', async () => {
     // Borrowing the shell machines' project would be the same box's second
     // attempt (one live sandbox per project), not a second box.
-    answer([{ id: 'b1', status: 'running', project: 'tabs' }], {
+    answer([{ id: 'b1', status: 'running', project: 'cloud-1' }], {
       id: 'b2',
       status: 'running',
-      project: 'desk',
+      project: 'desk-1',
     });
     await createSandbox('t', 'desktop');
     const post = calls.find((c) => c.init?.method === 'POST')!;
-    expect(JSON.parse(String(post.init!.body))).toEqual({ class: 'desktop', project: 'desk' });
+    expect(JSON.parse(String(post.init!.body))).toEqual({ class: 'desktop', project: 'desk-1' });
   });
 
   it('counts past the boxes already live, so pressing twice makes two', async () => {
     answer(
       [
-        { id: 'b1', status: 'running', project: 'tabs' },
-        { id: 'b2', status: 'running', project: 'tabs-2' },
+        { id: 'b1', status: 'running', project: 'cloud-1' },
+        { id: 'b2', status: 'running', project: 'cloud-2' },
       ],
-      { id: 'b3', status: 'running', project: 'tabs-3' },
+      { id: 'b3', status: 'running', project: 'cloud-3' },
     );
     await createSandbox('t');
     const post = calls.find((c) => c.init?.method === 'POST')!;
-    expect(JSON.parse(String(post.init!.body)).project).toBe('tabs-3');
+    expect(JSON.parse(String(post.init!.body)).project).toBe('cloud-3');
   });
 
   it("carries the server's reason, because a bare status code names none of them", async () => {
@@ -217,7 +217,7 @@ describe('a new cloud machine', () => {
   });
 
   it('never sends the bearer to anything but the API', async () => {
-    answer([], { id: 'b1', status: 'running', project: 'tabs' });
+    answer([], { id: 'b1', status: 'running', project: 'cloud-1' });
     await createSandbox('t');
     for (const c of calls) expect(c.url.startsWith(API)).toBe(true);
   });
