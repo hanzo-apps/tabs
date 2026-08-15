@@ -1,8 +1,14 @@
 # Canonical CI/CD config for hanzoai/tabs — the one file both the hanzoai/ci
 # reusable (.hanzo/workflows/cicd.yml) and platform.hanzo.ai read.
 #
-# @hanzo/tabs is a Next app that is published as a package rather than deployed
-# from this repo, so no `images:` and no `deploy:`.
+# Tabs IS deployed from this repo — `.hanzo/workflows/release.yml` syncs the
+# static export to the `tabs` bucket on every push to main, and that is what
+# tabs.hanzo.ai serves. There is no `images:` and no `deploy:` here because
+# neither describes that: the server in front of the bucket is hanzoai/static,
+# pinned in universe and released on its own cadence, so this repo builds no
+# image and rolls out no workload. Read the absence as "nothing to build", not
+# as "nothing ships" — it said the latter once, and cost an afternoon spent
+# looking for a lane that was already there.
 #
 # The gate is typecheck plus the jest suite. That suite is deliberately narrow
 # and says so in its own config — "pure logic only: the layout tree and the

@@ -22,13 +22,14 @@ import {
   type SandboxMachine,
   type Session,
   createSandbox,
+  frameUrl,
+  grant,
   machineName,
   machines,
   sandboxes,
-  sandboxTerminal,
   sessions,
-  terminalTicket,
 } from '@/lib/api';
+import { type Binding, shellUrl } from '@/lib/panes';
 import { renew, session, signIn, signOut } from '@/lib/iam';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
@@ -122,18 +123,53 @@ export default function App() {
     // stable, unique machine name.
     for (const s of data.b) {
       const key = machineName(s);
-      if (!out.has(key)) out.set(key, { machine: key, sandbox: s.id, status: 'online' });
+      if (!out.has(key)) {
+        // `screen` is the machine's own class, not a guess: only a desktop
+        // sandbox runs an X server, so only a desktop has pixels to frame.
+        out.set(key, {
+          machine: key,
+          sandbox: s.id,
+          screen: s.class === 'desktop',
+          status: 'online',
+        });
+      }
     }
     return [...out.values()];
   }, [data]);
 
-  /** A fresh framed-terminal URL for a sandbox pane — ticket minted here, where
-   *  the token lives, so the workspace stays credential-free. */
+  /**
+   * A fresh URL for a pane, minted here where the token lives so the workspace
+   * stays credential-free.
+   *
+   * ONE ACT, WHOEVER SERVES THE PAGE. A sandbox's terminal is hosted by cloud
+   * and opened by a single-use ticket; a linked machine's is served by the
+   * machine over its own tunnel, and what that tunnel wants is a session for
+   * the identity this browser is already holding. Both are "ask with the token,
+   * then frame the answer", which is why the workspace no longer knows or cares
+   * which kind of machine a pane is bound to — and why a linked machine's
+   * terminal is now the same signed-in person as the page around it, instead of
+   * a second sign-in on another domain.
+   *
+   * What the pane SHOWS picks the door: a shell attaches to its tmux session by
+   * name, a screen has one display and needs no name. A tunnel publishes a
+   * terminal and nothing else, so a linked machine has no screen to open.
+   */
   const mint = useCallback(
-    async (sandbox: string, shell: string) => {
+    async (host: TerminalHost, what: Binding) => {
       if (!token) throw new Error('signed out');
-      const ticket = await terminalTicket(token, sandbox);
-      return sandboxTerminal(sandbox, ticket, shell);
+      if (host.sandbox) {
+        return what.kind === 'screen'
+          ? frameUrl(token, host.sandbox, 'screen')
+          : frameUrl(
+              token,
+              host.sandbox,
+              'terminal',
+              what.kind === 'shell' ? what.shell.name : undefined,
+            );
+      }
+      if (!host.base || what.kind !== 'shell') throw new Error('this machine serves no terminal');
+      await grant(token, host.base);
+      return shellUrl(host.base, what.shell.name);
     },
     [token],
   );
@@ -141,8 +177,8 @@ export default function App() {
   if (!token) {
     return (
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-        <h1 className="text-xl font-semibold text-neutral-50">Sign in</h1>
-        <p className="mt-2 text-sm leading-relaxed text-neutral-400">
+        <h1 className="text-xl font-semibold text-foreground">Sign in</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
           Tabs reads your machines with your own Hanzo identity. It has no backend, so
           nothing about your session is stored anywhere but this browser.
         </p>
@@ -156,12 +192,12 @@ export default function App() {
               setBusy(false);
             });
           }}
-          className="mt-5 min-h-11 rounded-lg bg-neutral-50 text-sm font-medium text-neutral-950 hover:bg-white disabled:opacity-60"
+          className="mt-5 min-h-11 rounded-lg bg-primary text-sm font-medium text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
         >
           {busy ? 'Taking you to hanzo.id…' : 'Continue with Hanzo'}
         </button>
         {error ? <p className="mt-3 text-xs text-amber-500">{error}</p> : null}
-        <Link href="/" className="mt-6 text-xs text-neutral-600 hover:text-neutral-400">
+        <Link href="/" className="mt-6 text-xs text-[var(--text-disabled)] hover:text-muted-foreground">
           ← What is this?
         </Link>
       </main>
@@ -170,8 +206,8 @@ export default function App() {
 
   return (
     <main className="flex h-dvh flex-col gap-2 p-2">
-      <header className="flex shrink-0 items-center gap-2 text-xs text-neutral-500">
-        <Link href="/" className="font-mono text-neutral-300 hover:text-neutral-50">
+      <header className="flex shrink-0 items-center gap-2 text-xs text-[var(--text-tertiary)]">
+        <Link href="/" className="font-mono text-[var(--text-secondary)] hover:text-foreground">
           Tabs
         </Link>
         {error ? <span className="truncate text-amber-500">{error}</span> : null}
@@ -182,7 +218,7 @@ export default function App() {
             setToken(null);
             setData(null);
           }}
-          className="ml-auto shrink-0 rounded px-2 py-1 hover:bg-neutral-900 hover:text-neutral-300"
+          className="ml-auto shrink-0 rounded px-2 py-1 hover:bg-muted hover:text-[var(--text-secondary)]"
         >
           Disconnect
         </button>
@@ -197,14 +233,14 @@ export default function App() {
             // opens a shell on the name it gets, and a pane can only mint a
             // ticket for a machine the registry has already handed back, so the
             // refresh is what stands between the two.
-            onLaunch={async () => {
-              const box = await createSandbox(token);
+            onLaunch={async (kind) => {
+              const box = await createSandbox(token, kind);
               await refresh(token);
               return machineName(box);
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-neutral-600">
+          <div className="flex h-full items-center justify-center text-sm text-[var(--text-disabled)]">
             {error ? 'The registry is unavailable.' : 'Reading your machines…'}
           </div>
         )}
