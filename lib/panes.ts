@@ -59,7 +59,7 @@ export function label(b: Binding): string {
     case 'gone':
       return `${b.shell.machine} · ${b.shell.name}`;
     case 'screen':
-      return `${b.machine} · desktop`;
+      return `${b.machine} · desk`;
     case 'starting':
       return b.want === 'screen' ? 'Starting a desktop' : 'Starting a machine';
     case 'failed':
@@ -95,8 +95,17 @@ export function machineOf(b: Binding): string | null {
   }
 }
 
-/** The default tmux session a machine's first pane opens — matches the CLI's. */
-export const DEFAULT_SHELL = 'hanzo';
+/** The tmux session a machine's first pane opens.
+ *
+ *  It was `hanzo`, which put the company's name where the SHELL's goes and made
+ *  a pane read `tabs · hanzo` — two nouns, neither of them obviously the machine
+ *  or the session. Numbered from one, a pane says which box and which of its
+ *  shells, and nothing has to be recognised.
+ *
+ *  Only NEW shells take this name: a pane that is already open was saved with
+ *  its binding and comes back on the session it was on, so nothing running is
+ *  left behind by the rename. */
+export const DEFAULT_SHELL = 'shell-1';
 
 const SAFE = /[^A-Za-z0-9_-]/g;
 
@@ -108,8 +117,7 @@ export function safeName(raw: string): string {
 
 /** The next unused shell name for a machine, given what is already open on it. */
 export function mintName(taken: readonly string[]): string {
-  if (!taken.includes(DEFAULT_SHELL)) return DEFAULT_SHELL;
-  for (let i = 2; i < 1000; i++) {
+  for (let i = 1; i <= taken.length + 1; i++) {
     const n = `shell-${i}`;
     if (!taken.includes(n)) return n;
   }
