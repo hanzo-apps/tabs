@@ -10,12 +10,22 @@
 # as "nothing ships" — it said the latter once, and cost an afternoon spent
 # looking for a lane that was already there.
 #
-# The gate is typecheck plus the jest suite. That suite is deliberately narrow
-# and says so in its own config — "pure logic only: the layout tree and the
-# shell bindings; everything that needs a browser is verified against a real
-# one" — so panes/tiles assert the split arithmetic that browser tests would
-# only observe indirectly. Between the two, a type error anywhere in app/ or
-# components/ and a layout-tree regression are both red.
+# The gate is typecheck, the jest suite, and the surface guard. Jest is
+# deliberately narrow and says so in its own config — "pure logic only: the
+# layout tree and the shell bindings; everything that needs a browser is
+# verified against a real one" — so panes/tiles assert the split arithmetic that
+# browser tests would only observe indirectly.
+#
+# The surface guard is the other half of that sentence, and until it existed
+# nothing kept it. It builds the export and walks every screen a stranger can
+# reach at 390, 768 and 1440, asserting four things a reader is owed: the page
+# does not scroll sideways, every control is at least 44px tall, every colour
+# pair clears AA against the background it actually sits on, and no run of prose
+# is under 12px. Four defects were live when it was written and it reports all of
+# them; the readings are soft so one does not hide the next.
+#
+# What it does NOT check: line breaking. A widowed last line is a measure
+# decision, and a rule general enough to catch one would flag prose that is fine.
 test:
   - name: build
     run: |
@@ -23,3 +33,8 @@ test:
       npm ci
       npm run typecheck
       npm test
+  - name: surface
+    run: |
+      set -e
+      npx playwright install --with-deps chromium
+      npm run test:surface

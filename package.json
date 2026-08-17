@@ -9,7 +9,8 @@
     "build": "next build",
     "start": "next start",
     "test": "jest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:surface": "next build && playwright test"
   },
   "dependencies": {
     "@hanzo/design": "^0.4.6",
@@ -20,6 +21,7 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/jest": "^29",
     "@types/node": "^22",
