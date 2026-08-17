@@ -197,7 +197,12 @@ export default function App() {
           {busy ? 'Taking you to hanzo.id…' : 'Continue with Hanzo'}
         </button>
         {error ? <p className="mt-3 text-xs text-amber-500">{error}</p> : null}
-        <Link href="/" className="mt-6 text-xs text-[var(--text-disabled)] hover:text-muted-foreground">
+        {/* The way back off a sign-in wall is the one link that must be easy to hit,
+            so it reaches 44px like the button above it. Its text alone is 15 tall. */}
+        <Link
+          href="/"
+          className="mt-4 inline-flex min-h-11 items-center text-xs text-[var(--text-disabled)] hover:text-muted-foreground"
+        >
           ← What is this?
         </Link>
       </main>
