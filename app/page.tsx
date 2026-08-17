@@ -41,7 +41,9 @@ export default function Marketing() {
       <h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
         Keep tabs on your agents.
       </h1>
-      <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
+      {/* max-w-2xl, not xl: at 576px this sentence breaks with "a browser." alone on
+          a third line at every width above the phone. */}
+      <p className="mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
         Your coding agents work in shells on real machines. Tabs puts every one of those shells in
         front of you — split, tiled, and reachable from anywhere you can open a browser.
       </p>
@@ -67,7 +69,9 @@ export default function Marketing() {
         <pre className="mt-3 overflow-x-auto font-mono text-sm text-foreground">
           <code>hanzo link</code>
         </pre>
-        <p className="mt-3 text-xs leading-relaxed text-[var(--text-tertiary)]">
+        {/* Prose, so it reads at prose size. text-xs is 11px here, which is a size for
+            a label like the one above, not for two sentences. */}
+        <p className="mt-3 text-sm leading-relaxed text-[var(--text-tertiary)]">
           Run it on a laptop, a workstation, a GPU box — anything with a shell. The machine keeps
           the connection; nothing is exposed to the network it sits on.
         </p>
@@ -84,10 +88,18 @@ export default function Marketing() {
 
       <footer className="mt-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-6 text-xs text-[var(--text-disabled)]">
         <span>MIT</span>
-        <a className="hover:text-muted-foreground" href="https://hanzo.app">
+        {/* A link is something a thumb has to land on, so it gets the same 44px reach
+            the buttons above have. Text this size is 15px tall on its own. */}
+        <a
+          className="inline-flex min-h-11 items-center hover:text-muted-foreground"
+          href="https://hanzo.app"
+        >
           hanzo.app
         </a>
-        <a className="hover:text-muted-foreground" href="https://github.com/hanzoai/tabs">
+        <a
+          className="inline-flex min-h-11 items-center hover:text-muted-foreground"
+          href="https://github.com/hanzoai/tabs"
+        >
           github.com/hanzoai/tabs
         </a>
         <span className="ml-auto">Hanzo AI</span>
