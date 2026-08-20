@@ -11,7 +11,7 @@ name: Release
 # serving pod uses: these runners are not in the cluster. Same bucket, same
 # bytes, different door.
 #
-# Runs on the forge (git.hanzo.ai) native runners — see hanzoai/app/release.yml.
+# Runs on Hanzo Git (git.hanzo.ai) native runners — see hanzoai/app/release.yml.
 on:
   push:
     branches: [main]
