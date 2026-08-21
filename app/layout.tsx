@@ -6,6 +6,16 @@ export const metadata = {
   metadataBase: new URL('https://tabs.hanzo.ai'),
   title: { default: 'Hanzo Tabs', template: '%s — Hanzo Tabs' },
   description: 'Keep tabs on your agents. A browser terminal workspace for machines you have linked.',
+  // Both files are the Hanzo mark from @hanzo/brand, copied into public/. The
+  // .ico is here because a browser asks for /favicon.ico whether or not a page
+  // declares one, and the bucket has no server to answer that with anything
+  // else — an undeclared icon is a 404 and a blank tab.
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: '48x48' },
+    ],
+  },
   openGraph: {
     title: 'Hanzo Tabs — keep tabs on your agents',
     description: 'Every shell your coding agents work in, split and tiled, from anywhere.',
