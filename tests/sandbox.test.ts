@@ -7,8 +7,8 @@ import { API, Refusal, createSandbox, frameUrl, grant, machineName, unfunded } f
  * A sandbox joins the workspace as a machine whose URLs are MINTED, not
  * published — the one contract every Hanzo surface frames (a single-use
  * thirty-second ticket, and the page the mint names). These pin the properties
- * that would fail silently: the URL's only credential is the ticket, the door
- * asked for is the door opened, and a pane never mints twice for one bind.
+ * that would fail silently: the URL's only credential is the ticket, the address
+ * asked for is the address opened, and a pane never mints twice for one bind.
  */
 describe('the framed URL', () => {
   const mint = (url: string, ok = true) => {
@@ -218,7 +218,7 @@ describe('a new cloud machine', () => {
 
   // The refusal a person can actually act on, and the one the fleet spells
   // DIFFERENTLY from every other: money answers a NESTED {error:{code,message}}
-  // where other doors answer a flat {error:"..."}. Reading only the flat shape
+  // where other endpoints answer a flat {error:"..."}. Reading only the flat shape
   // coerced that object into a string, so an org out of credit was told
   // "[object Object]" beside a button that had just failed.
   it('reads the money refusal, which is an object and not a sentence', async () => {

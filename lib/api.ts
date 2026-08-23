@@ -54,7 +54,7 @@ export const unfunded = (e: unknown): boolean =>
  * Read a refusal off a response, in EITHER shape the fleet sends.
  *
  * The money wire answers `{error:{code,message}}` — an OBJECT — while other
- * doors answer `{error:"..."}`. Reading only the flat one coerced the nested
+ * endpoints answer `{error:"..."}`. Reading only the flat one coerced the nested
  * object into a string, so the one refusal a person can actually act on
  * rendered as `[object Object]` beside a button that had just failed.
  */
@@ -215,7 +215,7 @@ export type Door = 'terminal' | 'screen';
  * Mint a single-use ticket and answer the page to frame.
  *
  * The URL is the SERVER'S, not composed here: the mint answers the path its own
- * ticket opens, so a client cannot spell a door's address wrong or send a
+ * ticket opens, so a client cannot spell the address wrong or send a
  * ticket somewhere it does not work. All this adds is the host it was already
  * talking to, and `arg` — the tmux session a terminal attaches to, which a
  * screen has no use for because a machine has one display.

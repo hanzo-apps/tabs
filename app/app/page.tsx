@@ -150,7 +150,7 @@ export default function App() {
    * terminal is now the same signed-in person as the page around it, instead of
    * a second sign-in on another domain.
    *
-   * What the pane SHOWS picks the door: a shell attaches to its tmux session by
+   * What the pane SHOWS picks the address: a shell attaches to its tmux session by
    * name, a screen has one display and needs no name. A tunnel publishes a
    * terminal and nothing else, so a linked machine has no screen to open.
    */

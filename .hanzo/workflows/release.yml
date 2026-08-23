@@ -9,7 +9,7 @@ name: Release
 #
 # The endpoint is the PUBLIC s3.hanzo.ai, not the in-cluster service address the
 # serving pod uses: these runners are not in the cluster. Same bucket, same
-# bytes, different door.
+# bytes, different address.
 #
 # Runs on Hanzo Git (git.hanzo.ai) native runners — see hanzoai/app/release.yml.
 on:
