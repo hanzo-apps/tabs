@@ -143,20 +143,28 @@ export function shellUrl(base: string, name: string): string {
   }
 }
 
-/** Status → dot. The ONE map: session statuses first, then a machine's.
+/** Status → the colour of the dot. The ONE map: session statuses first, then a
+ * machine's.
  *
  * `online | offline | draining` is exactly what the control plane sends
  * (agents.TargetOnline/Offline/Draining). `busy` was here once and is sent by
  * nothing; `draining` was missing and fell through to the offline grey, so a box
- * being deliberately drained read as dead. */
+ * being deliberately drained read as dead.
+ *
+ * These are the design system's own state colours, read as custom properties.
+ * The one exception is a machine on its way somewhere — design publishes no
+ * warning rung, so the amber it was already drawing is stated here rather than
+ * bent into a token that means something else. */
+export const AMBER = '#f59e0b';
+
 export const DOT: Record<string, string> = {
-  running: 'bg-emerald-500',
-  paused: 'bg-amber-500',
-  done: 'bg-muted-foreground/40',
-  error: 'bg-destructive',
-  online: 'bg-emerald-500',
-  draining: 'bg-amber-500',
-  offline: 'bg-muted-foreground/40',
+  running: 'var(--state-online)',
+  paused: AMBER,
+  done: 'var(--text-disabled)',
+  error: 'var(--destructive)',
+  online: 'var(--state-online)',
+  draining: AMBER,
+  offline: 'var(--text-disabled)',
 };
 
 /**

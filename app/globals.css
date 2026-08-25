@@ -1,24 +1,21 @@
-@import "tailwindcss";
-
-/* The Hanzo design system. Tabs declares no palette of its own.
+/* What is true of the DOCUMENT, and nothing else.
  *
- * One import, after Tailwind's, and every semantic utility resolves: the
- * tokens and the @theme bridge that maps them onto Tailwind's namespace both
- * live in that file, so there is nothing here to keep in sync.
+ * Everything a component draws with — the palette, the type scale, the surface
+ * ladder, the tap-highlight reset, the smoothing — arrives with `<Hanzo>` in
+ * layout.tsx, which imports the design system's own stylesheet. Tabs declares
+ * no palette. It used to declare three tokens and use forty-one, and every
+ * undefined one became a stark white hairline against black; an app inventing
+ * a palette is how an estate ends up with several, none of them right.
  *
- * This app is why that exists. It used to declare three tokens and use
- * forty-one, and Tailwind v4 resolves a bare `border` to `currentColor` — so
- * every undefined token became a stark white hairline against black and the
- * whole product read as unfinished. An app inventing a palette is how an
- * estate ends up with several, none of them right. */
-@import "@hanzo/design/tailwind.css";
-
+ * What is left is what no React tree can say, because no React tree owns
+ * <html>: the ground is as tall as the window, dynamically, so a phone's
+ * shrinking chrome does not expose a strip underneath it. */
 html,
 body {
   height: 100%;
 }
-* {
-  -webkit-tap-highlight-color: transparent;
+body {
+  min-height: 100dvh;
 }
 
 /* Touch targets. A bare button in this app is a real control, and a control you

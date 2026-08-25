@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { colors } from '@hanzo/design';
+import { Hanzo } from '@hanzo/ui';
+import { colors } from '@hanzo/ui/core';
 import './globals.css';
 
 export const metadata = {
@@ -36,14 +37,15 @@ export const viewport = {
   initialScale: 1,
 };
 
-// No theme class on <html>: the tokens ARE the dark values at :root, and
-// `.light` is what inverts them. A `dark` class selects nothing in either the
-// design system or Tailwind here, so carrying one only suggests a switch that
-// does not exist.
+// `Hanzo` is the whole setup: it carries the design tokens, the stylesheet and
+// the theme every component resolves `$background` and `$borderColor` against.
+// Dark by default, which is the identity — there is no switch here to flip.
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-dvh bg-background text-foreground antialiased">{children}</body>
+      <body>
+        <Hanzo>{children}</Hanzo>
+      </body>
     </html>
   );
 }

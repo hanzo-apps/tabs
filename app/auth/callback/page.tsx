@@ -2,6 +2,7 @@
 
 /** Where hanzo.id returns to. It exchanges the code and leaves. */
 import { useEffect, useState } from 'react';
+import { Anchor, Paragraph, YStack } from '@hanzo/ui';
 import { complete } from '@/lib/iam';
 
 export default function Callback() {
@@ -12,17 +13,36 @@ export default function Callback() {
       .catch((e) => setError(e instanceof Error ? e.message : 'sign-in failed'));
   }, []);
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 text-center">
+    <YStack
+      render="main"
+      minHeight="100dvh"
+      maxWidth={448}
+      width="100%"
+      marginHorizontal="auto"
+      justifyContent="center"
+      paddingHorizontal="$5"
+    >
       {error ? (
         <>
-          <p className="text-sm text-[var(--text-secondary)]">{error}</p>
-          <a href="/app" className="mt-4 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+          <Paragraph size="$2" textAlign="center" color="var(--text-secondary)">
+            {error}
+          </Paragraph>
+          <Anchor
+            href="/app"
+            size="$1"
+            textAlign="center"
+            marginTop="$3"
+            color="var(--text-tertiary)"
+            hoverStyle={{ color: 'var(--text-secondary)' }}
+          >
             Try again
-          </a>
+          </Anchor>
         </>
       ) : (
-        <p className="text-sm text-[var(--text-tertiary)]">Signing you in…</p>
+        <Paragraph size="$2" textAlign="center" color="var(--text-tertiary)">
+          Signing you in…
+        </Paragraph>
       )}
-    </main>
+    </YStack>
   );
 }

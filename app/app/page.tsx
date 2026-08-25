@@ -16,6 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Anchor, Button, Fill, H1, Paragraph, Screen, SizableText, YStack } from '@hanzo/ui';
 
 import {
   type Machine,
@@ -29,7 +30,7 @@ import {
   sandboxes,
   sessions,
 } from '@/lib/api';
-import { type Binding, shellUrl } from '@/lib/panes';
+import { AMBER, type Binding, shellUrl } from '@/lib/panes';
 import { renew, session, signIn, signOut } from '@/lib/iam';
 import { Workspace, type TerminalHost } from '@/components/workspace';
 
@@ -176,42 +177,63 @@ export default function App() {
 
   if (!token) {
     return (
-      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6">
-        <h1 className="text-xl font-semibold text-foreground">Sign in</h1>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+      <YStack
+        render="main"
+        minHeight="100dvh"
+        width="100%"
+        maxWidth={448}
+        marginHorizontal="auto"
+        justifyContent="center"
+        paddingHorizontal="$5"
+      >
+        <H1 size="$6" fontWeight="600">
+          Sign in
+        </H1>
+        <Paragraph marginTop="$2" size="$2" color="var(--muted-foreground)">
           Tabs reads your machines with your own Hanzo identity. It has no backend, so
           nothing about your session is stored anywhere but this browser.
-        </p>
-        <button
-          type="button"
+        </Paragraph>
+        <Button
+          variant="primary"
+          marginTop="$4.5"
+          minHeight={44}
           disabled={busy}
-          onClick={() => {
+          onPress={() => {
             setBusy(true);
             signIn('/app').catch((e) => {
               setError(e instanceof Error ? e.message : 'sign-in failed');
               setBusy(false);
             });
           }}
-          className="mt-5 min-h-11 rounded-lg bg-primary text-sm font-medium text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
         >
           {busy ? 'Taking you to hanzo.id…' : 'Continue with Hanzo'}
-        </button>
-        {error ? <p className="mt-3 text-xs text-amber-500">{error}</p> : null}
+        </Button>
+        {error ? (
+          <Paragraph marginTop="$3" size="$1" color={AMBER}>
+            {error}
+          </Paragraph>
+        ) : null}
         {/* The way back off a sign-in wall is the one link that must be easy to hit,
             so it reaches 44px like the button above it. Its text alone is 15 tall. */}
-        <Link
-          href="/"
-          className="mt-4 inline-flex min-h-11 items-center text-xs text-[var(--text-disabled)] hover:text-muted-foreground"
+        <Anchor
+          render={<Link href="/" />}
+          size="$1"
+          marginTop="$4"
+          minHeight={44}
+          display="inline-flex"
+          alignItems="center"
+          color="var(--text-disabled)"
+          hoverStyle={{ color: 'var(--muted-foreground)' }}
         >
           ← What is this?
-        </Link>
-      </main>
+        </Anchor>
+      </YStack>
     );
   }
 
   return (
-    <main className="flex h-dvh flex-col p-1.5">
-      <div className="min-h-0 flex-1">
+    <Screen render="main" height="100dvh" padding="$1.5">
+      <Fill scroll={false}>
         {data ? (
           <Workspace
             hosts={hosts}
@@ -221,27 +243,36 @@ export default function App() {
             // terminal for two controls that fit in the gap beside the splits —
             // and a workspace is measured in rows you can read.
             start={
-              <Link
-                href="/"
-                className="shrink-0 font-mono text-[var(--text-secondary)] hover:text-foreground"
+              <Anchor
+                render={<Link href="/" />}
+                size="$1"
+                flexShrink={0}
+                fontFamily="$mono"
+                color="var(--text-secondary)"
+                hoverStyle={{ color: '$color' }}
               >
                 Tabs
-              </Link>
+              </Anchor>
             }
             end={
               <>
-                {error ? <span className="truncate text-amber-500">{error}</span> : null}
-                <button
-                  type="button"
-                  onClick={() => {
+                {error ? (
+                  <SizableText size="$1" color={AMBER} numberOfLines={1} ellipsis>
+                    {error}
+                  </SizableText>
+                ) : null}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  flexShrink={0}
+                  onPress={() => {
                     void signOut();
                     setToken(null);
                     setData(null);
                   }}
-                  className="shrink-0 rounded px-2 py-1 hover:bg-muted hover:text-[var(--text-secondary)]"
                 >
                   Disconnect
-                </button>
+                </Button>
               </>
             }
             // Started, then read back, then named — in that order. The workspace
@@ -255,30 +286,40 @@ export default function App() {
             }}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-[var(--text-disabled)]">
-            {error ? 'The registry is unavailable.' : 'Reading your machines…'}
-          </div>
+          <YStack flex={1} alignItems="center" justifyContent="center">
+            <SizableText size="$2" color="var(--text-disabled)">
+              {error ? 'The registry is unavailable.' : 'Reading your machines…'}
+            </SizableText>
+          </YStack>
         )}
-      </div>
+      </Fill>
 
       {/* The assistant, bottom right — the SAME corner console.hanzo.ai and
           hanzo.app keep theirs in, so the three surfaces agree on where Hanzo
           lives. Tabs has no composer of its own (it is a terminal workspace,
           deliberately backendless), so this is the doorway, not the room. */}
-      <a
-        href="https://hanzo.chat"
-        target="_blank"
-        rel="noreferrer noopener"
+      <Button
+        render={<a href="https://hanzo.chat" target="_blank" rel="noreferrer noopener" />}
+        size="icon"
+        position="fixed"
+        bottom="$4"
+        right="$4"
+        zIndex={40}
+        minWidth={44}
+        minHeight={44}
+        borderRadius={9999}
+        backgroundColor="var(--card)"
+        boxShadow="var(--shadow-lg)"
+        hoverStyle={{ backgroundColor: 'var(--muted)' }}
         title="Ask Hanzo"
         aria-label="Ask Hanzo"
-        className="fixed bottom-4 right-4 z-40 inline-flex size-11 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-lg transition-colors hover:bg-muted hover:text-foreground"
       >
-        <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <svg viewBox="0 0 24 24" width={18} height={18} fill="none" stroke="var(--muted-foreground)" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
           <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
           <path d="M20 3v4" />
           <path d="M22 5h-4" />
         </svg>
-      </a>
-    </main>
+      </Button>
+    </Screen>
   );
 }

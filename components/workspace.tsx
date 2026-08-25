@@ -7,7 +7,7 @@
  * `lib/panes` (a binding, pure). This file turns those into boxes, and turns
  * pointers back into rewrites. It decides nothing about layout.
  *
- * FOUR THINGS ARE NOT OBVIOUS, AND ALL FOUR WERE LEARNED THE HARD WAY.
+ * FIVE THINGS ARE NOT OBVIOUS, AND ALL FIVE WERE LEARNED THE HARD WAY.
  *
  * 1. THE PANES ARE A FLAT LIST IN A FIXED ORDER. Nesting them the way the tree
  *    nests remounts every <iframe> on any split, and each terminal reconnects.
@@ -31,10 +31,20 @@
  * 4. A PHONE PAGES, IT DOES NOT TILE. 390px cannot hold two terminals and stay
  *    legible, so `pageGeometry` turns side-by-side splits into swipeable pages
  *    and keeps stacked ones stacked. Same tree, same renderer.
+ *
+ * 5. THE NARROW LAYOUT IS ONE MEASUREMENT, NOT A MEDIA QUERY. `paging` already
+ *    asks the only question worth asking — can this box hold two terminals —
+ *    and the chrome that used to answer it separately, at a viewport width,
+ *    now reads the same value. gui emits nothing at all for a breakpoint prop
+ *    without its optimizing compiler — measured, `$gtXs={{backgroundColor:
+ *    'red'}}` painted no red at 1440 and put no class on the element — so a
+ *    second breakpoint written that way would have been silently absent
+ *    rather than merely redundant.
  */
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Cloud, Columns2, Loader2, Minus, Monitor, Plus, Rows2, X } from 'lucide-react';
+import { Button, Paragraph, SizableText, XStack, YStack } from '@hanzo/ui';
 
 import {
   type Dir,
@@ -67,6 +77,10 @@ import {
   rescued,
   restore,
 } from '@/lib/panes';
+
+/** The stack's own props, taken from the stack. @hanzo/ui is the one import
+ *  source, so a local alias beats reaching past it to @hanzo/gui for a type. */
+type StackProps = React.ComponentProps<typeof YStack>;
 
 /** A machine that can serve shells: its name and the tunnel its terminals live on. */
 export interface TerminalHost {
@@ -128,6 +142,78 @@ function loadSize(): number {
   if (typeof window === 'undefined') return SIZE.default;
   const n = Number(window.localStorage.getItem(SIZE_KEY));
   return Number.isFinite(n) && n > 0 ? clampSize(n) : SIZE.default;
+}
+
+/** A pane's name bar is 28px, so every control in it is 24px and no larger —
+ *  each pixel here is a row of terminal, times the number of panes. */
+const BAR = 28;
+const CHIP = 24;
+
+/** The cover a pane wears when there is no terminal to look at. Six states used
+ *  to draw this by hand, and the reason it has to be a component rather than a
+ *  convention is #3 above: it sits ON TOP of the frame, and a way out underneath
+ *  is no way out. */
+function Cover({ children, ...rest }: StackProps) {
+  return (
+    <YStack
+      position="absolute"
+      inset={0}
+      zIndex={10}
+      alignItems="center"
+      justifyContent="center"
+      paddingHorizontal="$4"
+      {...rest}
+    >
+      {children}
+    </YStack>
+  );
+}
+
+/** What a cover says. Narrow, small, quiet, centred — the pane is the subject. */
+function Note({ children }: { children: ReactNode }) {
+  return (
+    <Paragraph maxWidth={320} size="$1" textAlign="center" color="var(--muted-foreground)">
+      {children}
+    </Paragraph>
+  );
+}
+
+/** A machine's state, as a dot. */
+function Dot({ status }: { status: string }) {
+  return (
+    <YStack
+      aria-hidden
+      width={6}
+      height={6}
+      flexShrink={0}
+      borderRadius={9999}
+      backgroundColor={DOT[status] ?? DOT.offline}
+    />
+  );
+}
+
+/** One control in a pane's name bar. */
+function Chip({
+  run,
+  title,
+  children,
+  ...rest
+}: { run: () => void; title: string; children: ReactNode } & StackProps) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      minWidth={CHIP}
+      minHeight={CHIP}
+      borderRadius={4}
+      title={title}
+      aria-label={title}
+      onPress={run}
+      {...rest}
+    >
+      {children}
+    </Button>
+  );
 }
 
 export function Workspace({
@@ -296,7 +382,7 @@ export function Workspace({
   }, []);
 
   // ---- geometry: desktop tiles, phone pages ------------------------------
-  const boxRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLElement | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const el = boxRef.current;
@@ -484,20 +570,34 @@ export function Workspace({
 
   if (live.length === 0 && !tile) {
     return (
-      <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 text-center">
-        <p className="max-w-sm text-sm text-muted-foreground">
-          No machine is serving terminals. Run <code className="text-foreground">hanzo link</code> on
-          one and it appears here.
-        </p>
+      <YStack
+        height="100%"
+        width="100%"
+        alignItems="center"
+        justifyContent="center"
+        gap="$3"
+        paddingHorizontal="$5"
+        borderRadius="$4"
+        borderWidth={1}
+        borderStyle="dashed"
+        borderColor="$borderColor"
+      >
+        <Paragraph maxWidth={384} size="$2" textAlign="center" color="var(--muted-foreground)">
+          No machine is serving terminals. Run{' '}
+          <SizableText render="code" size="$2" fontFamily="$mono" color="$color">
+            hanzo link
+          </SizableText>{' '}
+          on one and it appears here.
+        </Paragraph>
         {/* The header is not rendered in this branch, and someone with no machine
             at all is exactly who has nowhere else to get one. */}
         {onLaunch ? (
-          <div className="flex items-center gap-1.5 text-xs">
-            <Act run={() => launch('dev')} icon={<Cloud className="h-3.5 w-3.5" />} label="New cloud machine" />
-            <Act run={() => launch('desktop')} icon={<Monitor className="h-3.5 w-3.5" />} label="New desktop" />
-          </div>
+          <XStack alignItems="center" gap="$1.5">
+            <Act run={() => launch('dev')} icon={<Cloud size={14} />} label="New cloud machine" />
+            <Act run={() => launch('desktop')} icon={<Monitor size={14} />} label="New desktop" />
+          </XStack>
         ) : null}
-      </div>
+      </YStack>
     );
   }
 
@@ -517,13 +617,13 @@ export function Workspace({
     watchable.length ? openHere(screenOn, watchable, dir, target) : launch('desktop');
 
   return (
-    <div className="flex h-full w-full flex-col gap-1.5">
+    <YStack height="100%" width="100%" gap="$1.5">
       {/* One row. Actions, not a status report. */}
-      <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <XStack flexShrink={0} alignItems="center" gap="$1.5">
         {start}
         <Act
           run={() => openShell(focus ? 'row' : null, focus)}
-          icon={<Plus className="h-3.5 w-3.5" />}
+          icon={<Plus size={14} />}
           label="New shell"
         />
         {/* One button for the screen, whether or not a machine with one exists
@@ -533,106 +633,139 @@ export function Workspace({
         {watchable.length || onLaunch ? (
           <Act
             run={() => openScreen(focus ? 'row' : null, focus)}
-            icon={<Monitor className="h-3.5 w-3.5" />}
+            icon={<Monitor size={14} />}
             label="Desktop"
           />
         ) : null}
         {onLaunch ? (
           <Act
             run={() => launch('dev')}
-            icon={<Cloud className="h-3.5 w-3.5" />}
+            icon={<Cloud size={14} />}
             label="New cloud machine"
           />
         ) : null}
-        <span className="ml-auto flex shrink-0 items-center gap-1">
+        <XStack marginLeft="auto" flexShrink={0} alignItems="center" gap="$1">
           {/* Type size. Two buttons and the number they move — a stepper IS the
               setting, so there is no panel to open and nothing to find. It reads
               its own state, which a slider or a menu would each need a second
               affordance to do. */}
-          <span className="mr-1 inline-flex items-center rounded-md border border-border">
-            <button
-              type="button"
-              onClick={() => setSize((n) => clampSize(n - SIZE.step))}
+          <XStack
+            marginRight="$1"
+            alignItems="center"
+            borderRadius="$2"
+            borderWidth={1}
+            borderColor="$borderColor"
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              paddingHorizontal="$2"
+              onPress={() => setSize((n) => clampSize(n - SIZE.step))}
               disabled={size <= SIZE.min}
               title="Smaller text"
               aria-label="Smaller text"
-              className="inline-flex min-h-9 items-center px-2 text-foreground hover:bg-muted disabled:opacity-40"
             >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <span
-              className="min-w-6 select-none text-center tabular-nums text-foreground"
-              title="Terminal text size"
+              <Minus size={14} />
+            </Button>
+            <SizableText
+              size="$1"
+              minWidth={24}
+              textAlign="center"
+              userSelect="none"
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+              render={<span title="Terminal text size" />}
             >
               {size}
-            </span>
-            <button
-              type="button"
-              onClick={() => setSize((n) => clampSize(n + SIZE.step))}
+            </SizableText>
+            <Button
+              variant="ghost"
+              size="sm"
+              paddingHorizontal="$2"
+              onPress={() => setSize((n) => clampSize(n + SIZE.step))}
               disabled={size >= SIZE.max}
               title="Larger text"
               aria-label="Larger text"
-              className="inline-flex min-h-9 items-center px-2 text-foreground hover:bg-muted disabled:opacity-40"
             >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </span>
-          <button
-            type="button"
-            onClick={() => focus && openShell('row', focus)}
+              <Plus size={14} />
+            </Button>
+          </XStack>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => focus && openShell('row', focus)}
             disabled={!focus}
             title="Split right"
-            className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
           >
-            <Columns2 className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Right</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => focus && openShell('col', focus)}
+            <Columns2 size={14} />
+            {paging ? null : <SizableText size="$1">Right</SizableText>}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => focus && openShell('col', focus)}
             disabled={!focus}
             title="Split down"
-            className="inline-flex min-h-9 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted disabled:opacity-40"
           >
-            <Rows2 className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Down</span>
-          </button>
+            <Rows2 size={14} />
+            {paging ? null : <SizableText size="$1">Down</SizableText>}
+          </Button>
           {end}
-        </span>
-      </div>
+        </XStack>
+      </XStack>
 
       {/* The phone's pager. One chip per PAGE, because pages are what you swipe. */}
       {paging && pages > 1 ? (
-        <div className="flex shrink-0 gap-1 overflow-x-auto">
+        <XStack flexShrink={0} gap="$1" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
           {Array.from({ length: pages }, (_, i) => {
             const first = geo.rects.find((r) => Math.round(r.left / 100) === i);
             const b = first ? bind[first.id] : undefined;
             const name = b ? label(b) : String(i + 1);
             return (
-              <button
+              <Button
                 key={i}
-                type="button"
-                onClick={() => {
+                variant="ghost"
+                size="sm"
+                maxWidth={160}
+                flexShrink={0}
+                backgroundColor={i === page ? 'var(--muted)' : 'transparent'}
+                onPress={() => {
                   setPage(i);
                   if (first) setFocus(first.id);
                 }}
-                className={`min-h-9 max-w-[10rem] shrink-0 truncate rounded-md px-2.5 text-xs ${
-                  i === page ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'
-                }`}
               >
-                {name}
-              </button>
+                <SizableText
+                  size="$1"
+                  numberOfLines={1}
+                  ellipsis
+                  color={i === page ? '$color' : 'var(--muted-foreground)'}
+                >
+                  {name}
+                </SizableText>
+              </Button>
             );
           })}
-        </div>
+        </XStack>
       ) : null}
 
-      <div
-        ref={boxRef}
-        className="relative min-h-0 w-full flex-1 overflow-hidden rounded-lg border bg-black"
+      <YStack
+        // The box measures itself, and what measures is a DOM element — so the
+        // ref holds one, narrowed where it is set rather than asserted.
+        ref={(el) => {
+          boxRef.current = el instanceof HTMLElement ? el : null;
+        }}
+        position="relative"
+        width="100%"
+        flex={1}
+        minHeight={0}
+        overflow="hidden"
+        borderRadius="$4"
+        borderWidth={1}
+        borderColor="$borderColor"
+        backgroundColor="black"
       >
-        <div
-          className="absolute inset-0"
+        <YStack
+          position="absolute"
+          inset={0}
           style={
             paging
               ? {
@@ -662,10 +795,11 @@ export function Workspace({
             const width = paging ? r.width / pages : r.width;
 
             return (
-              <div
+              <YStack
                 key={id}
                 onPointerDown={() => setFocus(id)}
-                className="absolute flex flex-col overflow-hidden"
+                position="absolute"
+                overflow="hidden"
                 style={{
                   left: `${left}%`,
                   top: `${r.top}%`,
@@ -677,70 +811,72 @@ export function Workspace({
                     page worth reading, so it is as short as a touch target
                     allows and no shorter — every pixel here is a row of
                     terminal, times the number of panes. */}
-                <div
-                  className={`flex h-7 shrink-0 items-center gap-1.5 px-2 text-xs ${
-                    on ? 'bg-muted text-foreground' : 'bg-card text-muted-foreground'
-                  }`}
+                <XStack
+                  height={BAR}
+                  flexShrink={0}
+                  alignItems="center"
+                  gap="$1.5"
+                  paddingHorizontal="$2"
+                  backgroundColor={on ? 'var(--muted)' : 'var(--card)'}
                 >
-                  <span
-                    aria-hidden
-                    className={`size-1.5 shrink-0 rounded-full ${
-                      b.kind === 'gone' ? DOT.offline : (DOT[host?.status ?? 'offline'] ?? DOT.offline)
-                    }`}
-                  />
-                  <span className="truncate">
-                    {title}
-                  </span>
-                  <span className="ml-auto hidden items-center gap-1 sm:flex">
-                    <button
-                      type="button"
-                      onClick={() => openShell('row', id)}
-                      title="Split right"
-                      className="inline-flex size-6 items-center justify-center rounded hover:bg-muted-foreground/20"
-                    >
-                      <Columns2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openShell('col', id)}
-                      title="Split down"
-                      className="inline-flex size-6 items-center justify-center rounded hover:bg-muted-foreground/20"
-                    >
-                      <Rows2 className="h-3.5 w-3.5" />
-                    </button>
-                  </span>
-                  {/* ONE bare button per row below sm: globals.css gives each a 44px
-                      ::after, so neighbours at a 24px pitch overlap and the LAST
-                      wins — close was stealing taps from split. */}
-                  <button
-                    type="button"
-                    onClick={() => doClose(id)}
-                    aria-label="Close pane"
-                    className="ml-auto inline-flex size-6 items-center justify-center rounded hover:bg-muted-foreground/20 sm:ml-0"
+                  <Dot status={b.kind === 'gone' ? 'offline' : (host?.status ?? 'offline')} />
+                  <SizableText
+                    size="$1"
+                    numberOfLines={1}
+                    ellipsis
+                    color={on ? '$color' : 'var(--muted-foreground)'}
                   >
-                    <X className="h-4 w-4 sm:h-3.5 sm:w-3.5" />
-                  </button>
-                </div>
+                    {title}
+                  </SizableText>
+                  {paging ? null : (
+                    <XStack marginLeft="auto" alignItems="center" gap="$1">
+                      <Chip run={() => openShell('row', id)} title="Split right">
+                        <Columns2 size={14} />
+                      </Chip>
+                      <Chip run={() => openShell('col', id)} title="Split down">
+                        <Rows2 size={14} />
+                      </Chip>
+                    </XStack>
+                  )}
+                  {/* ONE bare button per row on a phone: globals.css grows every
+                      button to 44px on a coarse pointer, so neighbours at a 24px
+                      pitch overlap and the LAST wins — close was stealing taps
+                      from split. */}
+                  <Chip
+                    run={() => doClose(id)}
+                    title="Close pane"
+                    marginLeft={paging ? 'auto' : 0}
+                  >
+                    <X size={paging ? 16 : 14} />
+                  </Chip>
+                </XStack>
 
-                <div className="relative min-h-0 flex-1 bg-black">
+                <YStack position="relative" flex={1} minHeight={0} backgroundColor="black">
                   {url ? (
                     <iframe
                       data-pane={id}
                       src={url}
                       title={title}
-                      className="absolute inset-0 h-full w-full bg-black"
                       // Scripts (a terminal is one), and `allow-same-origin` gives
                       // the frame ITS OWN origin — which ttyd needs for its socket
                       // — never ours. What is withheld is top-navigation and popups.
                       sandbox="allow-scripts allow-same-origin allow-forms"
                       ref={(el) => probe(id, el)}
                       onLoad={(e) => probe(id, e.currentTarget)}
-                      style={{ filter: on ? undefined : 'brightness(0.65)' }}
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        border: 0,
+                        background: '#000',
+                        filter: on ? undefined : 'brightness(0.65)',
+                      }}
                     />
                   ) : null}
 
                   {b.kind === 'empty' ? (
-                    <div className="absolute inset-0 z-10 flex items-center justify-center p-3">
+                    <Cover padding="$3">
                       <Picker
                         hosts={live}
                         onPick={(m) =>
@@ -751,21 +887,25 @@ export function Workspace({
                         }
                         onCancel={() => doClose(id)}
                       />
-                    </div>
+                    </Cover>
                   ) : b.kind === 'starting' ? (
                     // The loader lives HERE, in the box the machine is for —
                     // not on the button that asked. It is what tells you the
                     // click landed, and it is where the terminal appears.
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                      <p className="max-w-xs text-xs text-muted-foreground">
+                    <Cover gap="$2">
+                      <Loader2
+                        size={20}
+                        color="var(--muted-foreground)"
+                        style={{ animation: 'spin 1s linear infinite' }}
+                      />
+                      <Note>
                         Starting {b.want === 'screen' ? 'a desktop' : 'a machine'}. Its{' '}
                         {b.want === 'screen' ? 'screen' : 'terminal'} opens here.
-                      </p>
-                    </div>
+                      </Note>
+                    </Cover>
                   ) : b.kind === 'failed' ? (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
-                      <p className="max-w-xs text-xs text-muted-foreground">{b.why}</p>
+                    <Cover gap="$2">
+                      <Note>{b.why}</Note>
                       {/* Out of credit is the ONE failure here with a remedy the
                           person already holds: a cloud machine is ours and costs
                           money, a linked one is theirs and costs nothing, and
@@ -773,95 +913,99 @@ export function Workspace({
                           balance" beside a Close button reads as a dead end when
                           the workspace still works. */}
                       {b.unfunded ? (
-                        <p className="max-w-xs text-xs text-muted-foreground">
+                        <Note>
                           A cloud machine is ours and costs credit. One of yours costs nothing —
-                          run <code className="font-mono text-foreground">hanzo link</code> on it
-                          and its shell opens here.
-                        </p>
+                          run{' '}
+                          <SizableText render="code" size="$1" fontFamily="$mono" color="$color">
+                            hanzo link
+                          </SizableText>{' '}
+                          on it and its shell opens here.
+                        </Note>
                       ) : null}
-                      <button
-                        type="button"
-                        onClick={() => doClose(id)}
-                        className="min-h-9 rounded-md border border-border px-3 text-xs hover:bg-muted"
-                      >
+                      <Button variant="outline" size="sm" onPress={() => doClose(id)}>
                         Close pane
-                      </button>
-                    </div>
+                      </Button>
+                    </Cover>
                   ) : b.kind === 'gone' ? (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 px-4 text-center">
-                      <p className="text-xs text-muted-foreground">
-                        <span className="text-foreground">{b.shell.machine}</span> is offline. The{' '}
-                        <span className="text-foreground">{b.shell.name}</span> shell is still there
-                        — tmux is holding it.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => doClose(id)}
-                        className="min-h-9 rounded-md border border-border px-3 text-xs hover:bg-muted"
-                      >
+                    <Cover gap="$2">
+                      <Note>
+                        <SizableText size="$1" color="$color">
+                          {b.shell.machine}
+                        </SizableText>{' '}
+                        is offline. The{' '}
+                        <SizableText size="$1" color="$color">
+                          {b.shell.name}
+                        </SizableText>{' '}
+                        shell is still there — tmux is holding it.
+                      </Note>
+                      <Button variant="outline" size="sm" onPress={() => doClose(id)}>
                         Close pane
-                      </button>
-                    </div>
+                      </Button>
+                    </Cover>
                   ) : !url ? (
                     // No tunnel to frame — a box still coming up, or a link that
                     // stopped serving. Both mean wait, and NEITHER is the OAuth
                     // gate: without this the pane falls through to the rescue,
                     // which offers to sign you in to a terminal at `#`.
-                    <div className="absolute inset-0 z-10 flex items-center justify-center px-4 text-center">
-                      <p className="max-w-xs text-xs text-muted-foreground">
-                        Waiting for <span className="text-foreground">{machine}</span> to{' '}
-                        {b.kind === 'screen' ? 'show its screen' : 'serve a terminal'}. It appears
-                        here as soon as the machine is up.
-                      </p>
-                    </div>
+                    <Cover>
+                      <Note>
+                        Waiting for{' '}
+                        <SizableText size="$1" color="$color">
+                          {machine}
+                        </SizableText>{' '}
+                        to {b.kind === 'screen' ? 'show its screen' : 'serve a terminal'}. It
+                        appears here as soon as the machine is up.
+                      </Note>
+                    </Cover>
                   ) : refused[id] ? (
                     // A frame that never said ready is a credential that no
                     // longer opens anything — a spent ticket, an aged session —
                     // and the URL cannot be reopened, only asked for again.
                     // NEVER a sign-in here: the mint IS the sign-in, and sending
                     // someone to a second one is what this stopped doing.
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black px-4 text-center">
-                      <p className="max-w-xs text-xs text-muted-foreground">
+                    <Cover gap="$3" backgroundColor="black">
+                      <Note>
                         {b.kind === 'screen' ? 'The desktop' : 'The terminal'} did not come up.
                         Reconnecting asks for a fresh credential and tries again.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => reconnect(id)}
-                        className="inline-flex min-h-11 items-center rounded-md border border-border px-4 text-sm text-foreground hover:bg-muted"
-                      >
+                      </Note>
+                      <Button variant="outline" minHeight={44} onPress={() => reconnect(id)}>
                         Reconnect
-                      </button>
-                    </div>
+                      </Button>
+                    </Cover>
                   ) : null}
-                </div>
-              </div>
+                </YStack>
+              </YStack>
             );
           })}
 
           {geo.dividers.map((d) => {
             const left = paging ? d.left / pages : d.left;
             const width = paging ? d.width / pages : d.width;
+            // The hit area stays a thumb wide where a thumb is what lands on it.
+            const thick = d.dir === 'row' ? 12 : paging ? 24 : 12;
             return (
-              <div
+              <YStack
                 key={d.path.join('') || 'root'}
                 onPointerDown={(e) => {
                   e.preventDefault();
                   e.currentTarget.setPointerCapture?.(e.pointerId);
                   setDrag({ path: d.path, dir: d.dir });
                 }}
+                group
                 role="separator"
                 aria-orientation={d.dir === 'row' ? 'vertical' : 'horizontal'}
-                className={`group absolute z-20 touch-none bg-transparent ${
-                  d.dir === 'row'
-                    ? 'w-3 -translate-x-1/2 cursor-col-resize'
-                    : 'h-6 -translate-y-1/2 cursor-row-resize sm:h-3'
-                }`}
+                position="absolute"
+                zIndex={20}
+                backgroundColor="transparent"
+                cursor={d.dir === 'row' ? 'col-resize' : 'row-resize'}
+                x={d.dir === 'row' ? -thick / 2 : 0}
+                y={d.dir === 'row' ? 0 : -thick / 2}
                 style={{
+                  touchAction: 'none',
                   left: `${left}%`,
                   top: `${d.top}%`,
-                  width: d.dir === 'row' ? undefined : `${width}%`,
-                  height: d.dir === 'row' ? `${d.height}%` : undefined,
+                  width: d.dir === 'row' ? thick : `${width}%`,
+                  height: d.dir === 'row' ? `${d.height}%` : thick,
                 }}
               >
                 {/* A visible grabber: a touch divider you cannot see is one that
@@ -871,27 +1015,44 @@ export function Workspace({
                     should read as a seam and not as a third thing in the
                     window. It brightens on hover, where the pointer already
                     is. */}
-                <span
+                <YStack
                   aria-hidden
-                  className={`pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/20 transition-colors group-hover:bg-foreground/40 ${
-                    d.dir === 'row' ? 'h-6 w-px' : 'h-px w-6'
-                  }`}
+                  pointerEvents="none"
+                  position="absolute"
+                  left="50%"
+                  top="50%"
+                  x={d.dir === 'row' ? -0.5 : -12}
+                  y={d.dir === 'row' ? -12 : -0.5}
+                  width={d.dir === 'row' ? 1 : 24}
+                  height={d.dir === 'row' ? 24 : 1}
+                  borderRadius={9999}
+                  backgroundColor="var(--white-20)"
+                  $group-hover={{ backgroundColor: 'var(--white-40)' }}
                 />
-              </div>
+              </YStack>
             );
           })}
-        </div>
+        </YStack>
 
         {drag ? (
-          <div
-            className={`absolute inset-0 z-30 ${
-              drag.dir === 'row' ? 'cursor-col-resize' : 'cursor-row-resize'
-            }`}
+          <YStack
+            position="absolute"
+            inset={0}
+            zIndex={30}
+            cursor={drag.dir === 'row' ? 'col-resize' : 'row-resize'}
           />
         ) : null}
 
         {picking ? (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
+          <YStack
+            position="absolute"
+            inset={0}
+            zIndex={40}
+            alignItems="center"
+            justifyContent="center"
+            padding="$4"
+            backgroundColor="rgb(0 0 0 / 0.7)"
+          >
             <Picker
               hosts={picking.from}
               onPick={(m) => {
@@ -900,10 +1061,10 @@ export function Workspace({
               }}
               onCancel={() => setPicking(null)}
             />
-          </div>
+          </YStack>
         ) : null}
-      </div>
-    </div>
+      </YStack>
+    </YStack>
   );
 }
 
@@ -915,15 +1076,12 @@ export function Workspace({
  * and the reason it failed both belong to that pane. Keeping a spinner here too
  * would say the same thing twice, in the one place you are not looking.
  */
-function Act({ run, icon, label }: { run: () => void; icon: React.ReactNode; label: string }) {
+function Act({ run, icon, label }: { run: () => void; icon: ReactNode; label: string }) {
   return (
-    <button
-      type="button"
-      onClick={run}
-      className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-md border border-border px-2.5 text-foreground hover:bg-muted"
-    >
-      {icon} {label}
-    </button>
+    <Button variant="outline" size="sm" flexShrink={0} onPress={run}>
+      {icon}
+      <SizableText size="$1">{label}</SizableText>
+    </Button>
   );
 }
 
@@ -938,33 +1096,55 @@ function Picker({
   onCancel: () => void;
 }) {
   return (
-    <div className="w-full max-w-xs rounded-lg border border-border bg-card p-3">
-      <p className="mb-2 text-xs text-muted-foreground">Where should this shell run?</p>
-      <ul className="flex flex-col gap-1">
+    <YStack
+      width="100%"
+      maxWidth={320}
+      padding="$3"
+      borderRadius="$4"
+      borderWidth={1}
+      borderColor="$borderColor"
+      backgroundColor="var(--card)"
+    >
+      <SizableText marginBottom="$2" size="$1" color="var(--muted-foreground)">
+        Where should this shell run?
+      </SizableText>
+      <YStack render="ul" gap="$1">
         {hosts.map((h) => (
-          <li key={h.machine}>
-            <button
-              type="button"
-              onClick={() => onPick(h.machine)}
-              className="flex min-h-11 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-muted"
+          <YStack key={h.machine} render="li">
+            <Button
+              variant="ghost"
+              width="100%"
+              minHeight={44}
+              justifyContent="flex-start"
+              gap="$2"
+              paddingHorizontal="$2"
+              onPress={() => onPick(h.machine)}
             >
-              <span aria-hidden className={`size-1.5 rounded-full ${DOT[h.status] ?? DOT.offline}`} />
-              <span className="truncate">{h.machine}</span>
+              <Dot status={h.status} />
+              <SizableText size="$2" numberOfLines={1} ellipsis>
+                {h.machine}
+              </SizableText>
               {h.label ? (
-                <span className="ml-auto truncate text-xs text-muted-foreground">{h.label}</span>
+                <SizableText
+                  marginLeft="auto"
+                  size="$1"
+                  numberOfLines={1}
+                  ellipsis
+                  color="var(--muted-foreground)"
+                >
+                  {h.label}
+                </SizableText>
               ) : null}
-            </button>
-          </li>
+            </Button>
+          </YStack>
         ))}
-      </ul>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="mt-2 min-h-9 w-full rounded-md text-xs text-muted-foreground hover:bg-muted"
-      >
-        Cancel
-      </button>
-    </div>
+      </YStack>
+      <Button variant="ghost" size="sm" width="100%" marginTop="$2" onPress={onCancel}>
+        <SizableText size="$1" color="var(--muted-foreground)">
+          Cancel
+        </SizableText>
+      </Button>
+    </YStack>
   );
 }
 

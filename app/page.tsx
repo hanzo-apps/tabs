@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Anchor, Button, H1, Paragraph, SizableText, XStack, YStack } from '@hanzo/ui';
 
 export const metadata = {
   title: 'Hanzo Tabs — keep tabs on your agents',
@@ -36,74 +37,135 @@ const FACTS = [
 
 export default function Marketing() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-20">
-      <p className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--text-tertiary)]">Hanzo Tabs</p>
-      <h1 className="mt-4 text-4xl font-semibold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
+    <YStack
+      render="main"
+      width="100%"
+      maxWidth={768}
+      marginHorizontal="auto"
+      paddingHorizontal="$5"
+      paddingVertical="$11"
+    >
+      <SizableText
+        fontFamily="$mono"
+        size="$1"
+        textTransform="uppercase"
+        letterSpacing="0.2em"
+        color="var(--text-tertiary)"
+      >
+        Hanzo Tabs
+      </SizableText>
+      {/* The hero grows with the page instead of stepping at a width someone has
+          to remember. Both ends are the type scale's own rungs — 32px where a
+          phone can hold it, 40px once there is room — so the only new number is
+          the rate between them. gui's media props emit nothing without the
+          optimizing compiler, measured: `$gtXs` on a background changed no
+          pixel, so a breakpoint expressed that way would be silently absent. */}
+      <H1
+        marginTop="$4"
+        size="$10"
+        fontWeight="600"
+        style={{ fontSize: 'clamp(var(--text-4xl), 4.5vw, var(--text-5xl))', lineHeight: '1.06' }}
+      >
         Keep tabs on your agents.
-      </h1>
-      {/* max-w-2xl, not xl: at 576px this sentence breaks with "a browser." alone on
+      </H1>
+      {/* 672, not 768: at 576px this sentence breaks with "a browser." alone on
           a third line at every width above the phone. */}
-      <p className="mt-5 max-w-2xl text-lg leading-relaxed text-muted-foreground">
+      <Paragraph marginTop="$4.5" maxWidth={672} size="$4" color="var(--muted-foreground)">
         Your coding agents work in shells on real machines. Tabs puts every one of those shells in
         front of you — split, tiled, and reachable from anywhere you can open a browser.
-      </p>
+      </Paragraph>
 
-      <div className="mt-8 flex flex-wrap items-center gap-3">
-        <Link
-          href="/app"
-          className="inline-flex min-h-11 items-center rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-[var(--primary-hover)]"
-        >
+      <XStack marginTop="$6" flexWrap="wrap" alignItems="center" gap="$3">
+        <Button variant="primary" size="lg" minHeight={44} render={<Link href="/app" />}>
           Open Tabs
-        </Link>
-        <a
-          href="https://github.com/hanzoai/tabs"
-          className="inline-flex min-h-11 items-center rounded-lg border border-border px-5 text-sm text-[var(--text-secondary)] transition-colors hover:border-[var(--border-strong)] hover:text-foreground"
-        >
+        </Button>
+        <Button variant="outline" size="lg" minHeight={44} render={<a href="https://github.com/hanzoai/tabs" />}>
           Source
-        </a>
-      </div>
+        </Button>
+      </XStack>
 
       {/* The one instruction that makes the product exist. */}
-      <div className="mt-14 rounded-xl border border-border bg-background/60 p-5">
-        <p className="text-xs text-[var(--text-tertiary)]">Link a machine, and it appears here.</p>
-        <pre className="mt-3 overflow-x-auto font-mono text-sm text-foreground">
-          <code>hanzo link</code>
-        </pre>
-        {/* Prose, so it reads at prose size. text-xs is 11px here, which is a size for
-            a label like the one above, not for two sentences. */}
-        <p className="mt-3 text-sm leading-relaxed text-[var(--text-tertiary)]">
+      <YStack
+        marginTop="$9"
+        padding="$4.5"
+        borderWidth={1}
+        borderColor="$borderColor"
+        borderRadius="$5"
+      >
+        <SizableText size="$1" color="var(--text-tertiary)">
+          Link a machine, and it appears here.
+        </SizableText>
+        <SizableText render="pre" marginTop="$3" fontFamily="$mono" size="$2">
+          <SizableText render="code" fontFamily="$mono" size="$2">
+            hanzo link
+          </SizableText>
+        </SizableText>
+        {/* Prose, so it reads at prose size. The label size above is 11px, which is
+            a size for a label, not for two sentences. */}
+        <Paragraph marginTop="$3" size="$2" color="var(--text-tertiary)">
           Run it on a laptop, a workstation, a GPU box — anything with a shell. The machine keeps
           the connection; nothing is exposed to the network it sits on.
-        </p>
-      </div>
+        </Paragraph>
+      </YStack>
 
-      <dl className="mt-16 grid gap-x-10 gap-y-8 sm:grid-cols-2">
+      {/* Two columns wherever two fit. A column narrower than 280px is not worth
+          having, which is a fact about the text — so it is a basis the row wraps
+          on, not a viewport width someone has to keep in sync with the layout. */}
+      <XStack render="dl" marginTop="$10" marginBottom={0} flexWrap="wrap" columnGap="$7" rowGap="$6">
         {FACTS.map((f) => (
-          <div key={f.k}>
-            <dt className="text-sm font-medium text-foreground">{f.k}</dt>
-            <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{f.v}</dd>
-          </div>
+          <YStack key={f.k} flexBasis={280} flexGrow={1}>
+            <SizableText render="dt" size="$2" fontWeight="500">
+              {f.k}
+            </SizableText>
+            <Paragraph render="dd" marginTop="$0.25" size="$2" color="var(--muted-foreground)">
+              {f.v}
+            </Paragraph>
+          </YStack>
         ))}
-      </dl>
+      </XStack>
 
-      <footer className="mt-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-border pt-6 text-xs text-[var(--text-disabled)]">
-        <span>MIT</span>
+      <XStack
+        render="footer"
+        marginTop="$11"
+        paddingTop="$5"
+        flexWrap="wrap"
+        alignItems="center"
+        columnGap="$4.5"
+        rowGap="$2"
+        borderTopWidth={1}
+        borderColor="$borderColor"
+      >
+        <SizableText size="$1" color="var(--text-disabled)">
+          MIT
+        </SizableText>
         {/* A link is something a thumb has to land on, so it gets the same 44px reach
             the buttons above have. Text this size is 15px tall on its own. */}
-        <a
-          className="inline-flex min-h-11 items-center hover:text-muted-foreground"
+        <Anchor
           href="https://hanzo.app"
+          size="$1"
+          minHeight={44}
+          display="inline-flex"
+          alignItems="center"
+          color="var(--text-disabled)"
+          hoverStyle={{ color: 'var(--muted-foreground)' }}
         >
           hanzo.app
-        </a>
-        <a
-          className="inline-flex min-h-11 items-center hover:text-muted-foreground"
+        </Anchor>
+        <Anchor
           href="https://github.com/hanzoai/tabs"
+          size="$1"
+          minHeight={44}
+          display="inline-flex"
+          alignItems="center"
+          color="var(--text-disabled)"
+          hoverStyle={{ color: 'var(--muted-foreground)' }}
         >
           github.com/hanzoai/tabs
-        </a>
-        <span className="ml-auto">Hanzo AI</span>
-      </footer>
-    </main>
+        </Anchor>
+        <SizableText size="$1" marginLeft="auto" color="var(--text-disabled)">
+          Hanzo AI
+        </SizableText>
+      </XStack>
+    </YStack>
   );
 }
