@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - '@hanzo/ui@8.25.0'
