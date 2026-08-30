@@ -4,7 +4,7 @@ minimumReleaseAgeExclude:
 catalog:
   '@hanzo/gui': '8.3.1'
   '@hanzo/iam': '0.21.17'
-  '@hanzo/ui': '8.27.0'
+  '@hanzo/ui': '8.27.2'
   '@playwright/test': '^1.62.1'
   '@types/jest': '^30.0.0'
   '@types/node': '26.4.0'
