@@ -15,7 +15,7 @@ name: Release
 on:
   push:
     branches: [main]
-    paths-ignore: ['**.md', '.hanzo/workflows/**']
+    paths-ignore: ['**.md', '.github/workflows/**']
   workflow_dispatch:
 permissions: { contents: write }
 concurrency: { group: release-tabs, cancel-in-progress: false }
