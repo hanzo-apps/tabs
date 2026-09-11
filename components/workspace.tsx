@@ -43,8 +43,21 @@
  */
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Cloud, Columns2, Loader2, Minus, Monitor, Plus, Rows2, X } from 'lucide-react';
-import { Button, Paragraph, SizableText, XStack, YStack } from '@hanzo/ui';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Cloud,
+  Columns2,
+  Globe,
+  Loader2,
+  Minus,
+  Monitor,
+  Plus,
+  RotateCw,
+  Rows2,
+  X,
+} from 'lucide-react';
+import { Button, Input, Paragraph, SizableText, XStack, YStack } from '@hanzo/ui';
 
 import {
   type Dir,
@@ -71,10 +84,12 @@ import {
   DOT,
   type Binding,
   isReady,
+  proves,
   label,
   machineOf,
   mintName,
   rescued,
+  web,
   restore,
 } from '@/lib/panes';
 
@@ -213,6 +228,74 @@ function Chip({
     >
       {children}
     </Button>
+  );
+}
+
+/**
+ * A browser pane's chrome: where it is, and the way back.
+ *
+ * The address takes the place of the title rather than sitting in a second row.
+ * For a page the address IS the title, and a row of chrome costs every pane on
+ * screen the same pixels a row of terminal would have used.
+ *
+ * `web` decides what a typed string becomes, so a scheme we do not frame is
+ * refused here rather than reaching an iframe src.
+ */
+function Address({
+  url,
+  go,
+  disabled,
+}: {
+  url: string;
+  go: (to: string) => void;
+  disabled?: boolean;
+}) {
+  const [typed, setTyped] = useState<string | null>(null);
+  const [refused, setRefused] = useState(false);
+
+  // The field shows what is typed while someone is typing and what is LOADED
+  // otherwise, so a navigation started elsewhere is reflected and a half-typed
+  // address is never overwritten under the cursor.
+  const shown = typed ?? url;
+
+  const submit = () => {
+    const to = web(shown);
+    if (!to) {
+      setRefused(true);
+      return;
+    }
+    setRefused(false);
+    setTyped(null);
+    go(to);
+  };
+
+  return (
+    <Input
+      value={shown}
+      placeholder="Search or enter a URL"
+      aria-label="Address"
+      aria-invalid={refused || undefined}
+      spellCheck={false}
+      autoCapitalize="none"
+      autoCorrect="off"
+      disabled={disabled}
+      onChangeText={(t: string) => {
+        setTyped(t);
+        setRefused(false);
+      }}
+      onKeyPress={(e: { nativeEvent: { key: string } }) => {
+        if (e.nativeEvent.key === 'Enter') submit();
+      }}
+      onBlur={() => setTyped(null)}
+      flex={1}
+      minWidth={0}
+      height={CHIP}
+      borderRadius={4}
+      fontSize={12}
+      paddingHorizontal="$2"
+      borderColor={refused ? 'var(--destructive)' : 'var(--border)'}
+      backgroundColor="var(--background)"
+    />
   );
 }
 
@@ -514,7 +597,65 @@ export function Workspace({
     return () => clearTimeout(t);
   }, []);
 
-  const refused = useMemo(() => rescued(waited, alive), [waited, alive]);
+  /**
+   * Where a browser pane has been, and where in that it is.
+   *
+   * Kept HERE because it cannot be read from the frame: a cross-origin
+   * document's `history` is not ours to touch, so `back()` on it throws. What
+   * this holds is the addresses this workspace navigated to — typed, or
+   * followed from one of our own affordances — and back and forward re-point
+   * the frame at one of them.
+   *
+   * The limit is worth stating rather than hiding: a link followed INSIDE the
+   * page is the page's own navigation and never reaches this trail, so back
+   * returns to the last address this workspace set, not to the last page the
+   * reader saw. A parent cannot observe the other kind at all.
+   */
+  const [trail, setTrail] = useState<Record<string, { at: number; urls: string[] }>>({});
+
+  /** Go to an address in a pane, forgetting any forward history from here —
+   *  which is what a new navigation means. */
+  const visit = useCallback((id: string, to: string) => {
+    setBind((s) => ({ ...s, [id]: { kind: 'page', url: to } }));
+    setTrail((t) => {
+      const cur = t[id] ?? { at: -1, urls: [] };
+      const urls = [...cur.urls.slice(0, cur.at + 1), to];
+      return { ...t, [id]: { at: urls.length - 1, urls } };
+    });
+  }, []);
+
+  /** Step through a pane's trail. A step past either end is not a step. */
+  const step = useCallback((id: string, by: number) => {
+    setTrail((t) => {
+      const cur = t[id];
+      if (!cur) return t;
+      const at = cur.at + by;
+      if (at < 0 || at >= cur.urls.length) return t;
+      setBind((s) => ({ ...s, [id]: { kind: 'page', url: cur.urls[at]! } }));
+      return { ...t, [id]: { ...cur, at } };
+    });
+  }, []);
+
+  /**
+   * Reload a pane's page.
+   *
+   * By assigning the frame's `src`, which a parent may do cross-origin — it is
+   * a navigation the parent initiates, not a read of the document. Re-keying
+   * the element would work too and would remount every sibling's frame, which
+   * is the one thing this layout is arranged to avoid.
+   */
+  const reload = useCallback((id: string) => {
+    const el = frames.current[id];
+    if (el) el.src = el.src;
+  }, []);
+
+  // Which panes owe us a word that they came up. A page on the open web owes
+  // none, so its silence is not a failure to report.
+  const proving = useMemo(
+    () => Object.fromEntries(Object.entries(bind).map(([id, b]) => [id, proves(b)])),
+    [bind],
+  );
+  const refused = useMemo(() => rescued(waited, alive, proving), [waited, alive, proving]);
 
   // A pick is "which machine", and what to MAKE of the one picked comes with
   // the question — so the same picker asks for a shell's machine and a
@@ -610,6 +751,11 @@ export function Workspace({
   /** A shell goes on any live machine. */
   const openShell = (dir: Dir | null, target: string | null) => openHere(shellOn, live, dir, target);
 
+  /** A page needs no machine, so it needs no picker and no mint — the pane
+   *  opens empty and the address is the whole of what it wants. */
+  const openPage = (dir: Dir | null, target: string | null) =>
+    open({ kind: 'page', url: '' }, dir, target);
+
   /** A screen goes only where there IS one — and where there is none, the
    *  button starts the machine that has one. One press, one meaning: show me a
    *  desktop. */
@@ -637,6 +783,11 @@ export function Workspace({
             label="Desktop"
           />
         ) : null}
+        <Act
+          run={() => openPage(focus ? 'row' : null, focus)}
+          icon={<Globe size={14} />}
+          label="Browse"
+        />
         {onLaunch ? (
           <Act
             run={() => launch('dev')}
@@ -788,7 +939,9 @@ export function Workspace({
             // mint still in flight or one that could not be made — a tunnel
             // publishes a terminal and nothing else, so a linked machine has no
             // screen and never gets one.
-            const url = minted[id] ?? null;
+            // A page's url IS its binding — there is no credential to mint and
+            // nothing spent by framing it. Everything else waits for the mint.
+            const url = b.kind === 'page' ? b.url : (minted[id] ?? null);
             // Every rect is page-relative; the track is `pages * 100%` wide, so a
             // page occupies `100/pages` of it.
             const left = paging ? r.left / pages : r.left;
@@ -819,6 +972,31 @@ export function Workspace({
                   paddingHorizontal="$2"
                   backgroundColor={on ? 'var(--muted)' : 'var(--card)'}
                 >
+                  {b.kind === 'page' ? (
+                    <>
+                      <Chip
+                        run={() => step(id, -1)}
+                        title="Back"
+                        disabled={(trail[id]?.at ?? 0) <= 0}
+                      >
+                        <ArrowLeft size={14} />
+                      </Chip>
+                      {paging ? null : (
+                        <Chip
+                          run={() => step(id, 1)}
+                          title="Forward"
+                          disabled={(trail[id]?.at ?? 0) >= (trail[id]?.urls.length ?? 1) - 1}
+                        >
+                          <ArrowRight size={14} />
+                        </Chip>
+                      )}
+                      <Chip run={() => reload(id)} title="Reload">
+                        <RotateCw size={14} />
+                      </Chip>
+                      <Address url={b.url} go={(to) => visit(id, to)} />
+                    </>
+                  ) : (
+                    <>
                   <Dot status={b.kind === 'gone' ? 'offline' : (host?.status ?? 'offline')} />
                   <SizableText
                     size="$1"
@@ -828,6 +1006,8 @@ export function Workspace({
                   >
                     {title}
                   </SizableText>
+                    </>
+                  )}
                   {paging ? null : (
                     <XStack marginLeft="auto" alignItems="center" gap="$1">
                       <Chip run={() => openShell('row', id)} title="Split right">
@@ -942,6 +1122,13 @@ export function Workspace({
                         Close pane
                       </Button>
                     </Cover>
+                  ) : b.kind === 'page' ? (
+                    url ? null : (
+                      <Cover gap="$2">
+                        <Globe size={22} color="var(--muted-foreground)" />
+                        <Note>Enter a URL above to open a page.</Note>
+                      </Cover>
+                    )
                   ) : !url ? (
                     // No tunnel to frame — a box still coming up, or a link that
                     // stopped serving. Both mean wait, and NEITHER is the OAuth
