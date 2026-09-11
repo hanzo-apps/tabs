@@ -9,8 +9,10 @@ import {
   mintName,
   rescued,
   restore,
+  proves,
   safeName,
   shellUrl,
+  web,
 } from '@/lib/panes';
 
 /**
@@ -101,18 +103,18 @@ describe('a framed page announces itself, and silence is the rescue', () => {
   it('leaves a pane alone until its terminal has had time to boot', () => {
     // Nothing waited yet: still connecting. Drawing a rescue here would flash it
     // over every pane on every load.
-    expect(rescued({}, {})).toEqual({});
-    expect(rescued({ p0: false }, {})).toEqual({});
+    expect(rescued({}, {}, {})).toEqual({});
+    expect(rescued({ p0: false }, {}, { p0: true })).toEqual({});
   });
 
   it('rescues a pane that waited and never spoke', () => {
-    expect(rescued({ p0: true }, {})).toEqual({ p0: true });
-    expect(rescued({ p0: true }, { p0: true })).toEqual({ p0: false });
+    expect(rescued({ p0: true }, {}, { p0: true })).toEqual({ p0: true });
+    expect(rescued({ p0: true }, { p0: true }, { p0: true })).toEqual({ p0: false });
   });
 
   it('judges each pane on its own terminal', () => {
     // One machine gated, one fine — the gated pane alone gets the way out.
-    expect(rescued({ p0: true, p1: true }, { p1: true })).toEqual({ p0: true, p1: false });
+    expect(rescued({ p0: true, p1: true }, { p1: true }, { p0: true, p1: true })).toEqual({ p0: true, p1: false });
   });
 
   it('waits long enough that a slow connect is not called dead', () => {
@@ -195,5 +197,72 @@ describe('a pane can be waiting for a machine', () => {
     // A machine that went away is the ONE waiting state that survives a reload:
     // tmux is still holding that session, so the pane is still about something.
     expect(restore(gone)).toBe(gone);
+  });
+});
+
+
+/**
+ * A browser pane frames the open web, which makes it the one pane whose
+ * address comes from a person's keyboard rather than from a mint. Two rules
+ * follow, and both are here.
+ */
+describe('a browser pane', () => {
+  it('takes a bare host to mean https', () => {
+    expect(web('news.ycombinator.com')).toBe('https://news.ycombinator.com/');
+    expect(web('  hanzo.ai  ')).toBe('https://hanzo.ai/');
+  });
+
+  it('keeps a scheme that was typed', () => {
+    expect(web('http://localhost:3000/x')).toBe('http://localhost:3000/x');
+    expect(web('https://hanzo.ai/v1')).toBe('https://hanzo.ai/v1');
+  });
+
+  it('REFUSES a scheme it will not frame', () => {
+    // These reach an iframe src, where they are script in THIS document rather
+    // than a page in the frame. Refusing is the answer: a browser pane that
+    // quietly loaded one would be an injection with a text field in front of it.
+    expect(web('javascript:alert(1)')).toBeNull();
+    expect(web('JavaScript:alert(1)')).toBeNull();
+    expect(web('data:text/html,<script>alert(1)</script>')).toBeNull();
+    expect(web('vbscript:msgbox(1)')).toBeNull();
+    expect(web('file:///etc/passwd')).toBeNull();
+    expect(web('blob:https://hanzo.ai/x')).toBeNull();
+  });
+
+  it('has nothing to open for nothing typed', () => {
+    expect(web('')).toBeNull();
+    expect(web('   ')).toBeNull();
+  });
+
+  it('names itself by its host', () => {
+    expect(label({ kind: 'page', url: 'https://www.hanzo.ai/x?y=1' })).toBe('hanzo.ai');
+    expect(label({ kind: 'page', url: '' })).toBe('New tab');
+  });
+
+  it('is on no machine', () => {
+    expect(machineOf({ kind: 'page', url: 'https://hanzo.ai' })).toBeNull();
+  });
+
+  it('comes back on the address it was left on', () => {
+    // Nothing was running, so nothing is stale: a url survives a reload the way
+    // a shell name does.
+    const page = { kind: 'page' as const, url: 'https://hanzo.ai' };
+    expect(restore(page)).toEqual(page);
+  });
+
+  it('owes this workspace no word that it came up', () => {
+    // A page on the open web will never post `hanzo-term`. Judged by its
+    // silence it would be covered by a rescue six seconds after loading,
+    // offering to reconnect a site already on screen and working.
+    expect(proves({ kind: 'page', url: 'https://hanzo.ai' })).toBe(false);
+    expect(proves({ kind: 'shell', shell: { machine: 'm', name: 'shell-1' } })).toBe(true);
+    expect(proves({ kind: 'screen', machine: 'm' })).toBe(true);
+  });
+
+  it('is never rescued, however long it stays quiet', () => {
+    const waited = { page: true, term: true };
+    const alive = {};
+    const proving = { page: false, term: true };
+    expect(rescued(waited, alive, proving)).toEqual({ term: true });
   });
 });

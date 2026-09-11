@@ -31,6 +31,14 @@ export type Binding =
   /** The machine's SCREEN — its X display, as pixels. No name, because a
    *  machine has one display where it has as many shells as you ask for. */
   | { kind: 'screen'; machine: string }
+  /**
+   * A WEB PAGE, at a url.
+   *
+   * The one binding that is not a machine's face, so there is nothing to link,
+   * nothing to start and nothing to mint: the url IS the binding, and it
+   * survives a reload the way a shell name does.
+   */
+  | { kind: 'page'; url: string; }
   /** Split made, machine not chosen yet. */
   | { kind: 'empty' }
   /**
@@ -62,6 +70,8 @@ export function label(b: Binding): string {
       return `${b.shell.machine} · ${b.shell.name}`;
     case 'screen':
       return `${b.machine} · desk`;
+    case 'page':
+      return host(b.url) || 'New tab';
     case 'starting':
       return b.want === 'screen' ? 'Starting a desktop' : 'Starting a machine';
     case 'failed':
@@ -143,6 +153,54 @@ export function shellUrl(base: string, name: string): string {
   }
 }
 
+/**
+ * What a typed address becomes, or null if it cannot become a page.
+ *
+ * Two jobs, and the second is the one that matters. A person types
+ * `news.ycombinator.com` and means https, so a bare host gets a scheme. And a
+ * typed string reaches an `iframe src`, where `javascript:` and `data:` are
+ * script in THIS document rather than a page in the frame — so the scheme is
+ * checked against http and https and nothing else is admitted. Refusing is the
+ * answer: a browser pane that quietly loaded something else would be worse than
+ * one that says it cannot.
+ */
+export function web(typed: string): string | null {
+  const raw = typed.trim();
+  if (!raw) return null;
+  const guessed = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(raw) ? raw : `https://${raw}`;
+  try {
+    const u = new URL(guessed);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The host of a url, for a tab to name itself by. `www.` comes off because a
+ *  tab strip is narrow and the four characters carry nothing. */
+export function host(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Whether a pane is one of OURS, and so owes us a word that it came up.
+ *
+ * The readiness contract below is a conversation between this workspace and
+ * pages we serve. A page on the open web is in no such conversation: it will
+ * never post `hanzo-term`, so a rescue keyed on silence covers every browser
+ * pane six seconds after it loads — offering to reconnect a site that is
+ * already on screen and working.
+ *
+ * So silence means "did not come up" only for a pane that promised to speak.
+ */
+export function proves(b: Binding): boolean {
+  return b.kind === 'shell' || b.kind === 'screen' || b.kind === 'gone';
+}
+
 /** Status → the colour of the dot. The ONE map: session statuses first, then a
  * machine's.
  *
@@ -206,16 +264,17 @@ export function isReady(data: unknown): boolean {
   );
 }
 
-/** Panes that should show the way out: waited past the deadline, never heard from.
- *  A pane that has not waited yet is absent, not false — it is still loading, and
- *  nothing should be drawn over it. */
+/** Panes that should show the way out: waited past the deadline, never heard
+ *  from, and OURS to hear from (see `proves`). A pane that has not waited yet is
+ *  absent, not false — it is still loading, and nothing should be drawn over it. */
 export function rescued(
   waited: Record<string, boolean>,
   alive: Record<string, boolean>,
+  proving: Record<string, boolean>,
 ): Record<string, boolean> {
   return Object.fromEntries(
     Object.keys(waited)
-      .filter((id) => waited[id])
+      .filter((id) => waited[id] && proving[id])
       .map((id) => [id, !alive[id]]),
   );
 }

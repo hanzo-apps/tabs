@@ -119,7 +119,11 @@ describe('the workspace mints once per pane', () => {
     // published tunnel for a linked machine — which is what left the linked
     // one framing a URL nobody had authorised, and a person staring at a
     // second sign-in. Both are minted now, so there is one path to be right.
-    expect(src).toContain('const url = minted[id] ?? null;');
+    //
+    // A page is the one pane with no machine and so no credential: its url IS
+    // its binding. That is a different question, not a second answer to this
+    // one — every pane that has a machine still reads the mint and nothing else.
+    expect(src).toContain("b.kind === 'page' ? b.url : (minted[id] ?? null)");
     expect(src).not.toContain('shellUrl(');
     expect(src).not.toMatch(/host\?\.sandbox\s*\?/);
   });
