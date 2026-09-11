@@ -96,6 +96,11 @@ import {
 /** The stack's own props, taken from the stack. @hanzo/ui is the one import
  *  source, so a local alias beats reaching past it to @hanzo/gui for a type. */
 type StackProps = React.ComponentProps<typeof YStack>;
+/** What a caller may add to a Chip — a Button's props, not a Stack's. The two
+ *  differ on `onClick` alone: @hanzo/ui redeclares it as the DOM handler a web
+ *  caller actually writes, so spreading Stack props onto a Button conflicts
+ *  there and nowhere else. Layout props reach it either way. */
+type ButtonProps = React.ComponentProps<typeof Button>;
 
 /** A machine that can serve shells: its name and the tunnel its terminals live on. */
 export interface TerminalHost {
@@ -213,7 +218,7 @@ function Chip({
   title,
   children,
   ...rest
-}: { run: () => void; title: string; children: ReactNode } & StackProps) {
+}: { run: () => void; title: string; children: ReactNode } & ButtonProps) {
   return (
     <Button
       variant="ghost"

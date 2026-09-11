@@ -29,7 +29,6 @@
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "jest": "catalog:",
-    "ts-jest": "catalog:",
     "typescript": "catalog:"
   },
   "packageManager": "pnpm@11.24.0"

@@ -14,7 +14,13 @@
     "jsx": "preserve",
     "incremental": true,
     "plugins": [{ "name": "next" }],
-    "paths": { "@/*": ["./*"] }
+    "paths": { "@/*": ["./*"] },
+    // Named rather than left to automatic @types discovery, which TypeScript
+    // 7.0.2 does not do through pnpm's symlinked node_modules/@types: every
+    // `describe`, `it` and `expect` in tests/ was an unresolved global, 283 of
+    // the 284 errors this project reported. An incremental .tsbuildinfo from
+    // before the bump hid it, so the count looked the same either way.
+    "types": ["jest", "node"]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
