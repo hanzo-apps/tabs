@@ -2,6 +2,7 @@ minimumReleaseAgeExclude:
   - '@hanzo/ui@8.25.0'
 
 catalog:
+  '@hanzo/design': '0.5.24'
   '@hanzo/gui': '8.3.1'
   '@hanzo/iam': '0.21.17'
   '@hanzo/ui': '8.27.2'
@@ -21,6 +22,8 @@ catalog:
 overrides:
   '@noble/hashes': '1.8.0'
   'zod': '^4.5.2'
+# What may run its own install script. Both are jest's, and both only fetch a
+# native binary that pnpm already installs as a platform package.
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  unrs-resolver: set this to true or false
+  '@parcel/watcher': false
+  unrs-resolver: false

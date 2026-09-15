@@ -15,6 +15,7 @@
     "react-hook-form": "catalog:"
   },
   "devDependencies": {
+    "@hanzo/design": "catalog:",
     "@hanzo/gui": "catalog:",
     "@hanzo/iam": "catalog:",
     "@hanzo/ui": "catalog:",
