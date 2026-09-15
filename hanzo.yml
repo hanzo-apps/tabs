@@ -1,14 +1,12 @@
 # Canonical CI/CD config for hanzoai/tabs — the one file both the hanzoai/ci
 # reusable (.hanzo/workflows/cicd.yml) and platform.hanzo.ai read.
 #
-# Tabs IS deployed from this repo — `.hanzo/workflows/release.yml` syncs the
-# static export to the `tabs` bucket on every push to main, and that is what
-# tabs.hanzo.ai serves. There is no `images:` and no `deploy:` here because
-# neither describes that: the server in front of the bucket is hanzoai/static,
-# pinned in universe and released on its own cadence, so this repo builds no
-# image and rolls out no workload. Read the absence as "nothing to build", not
-# as "nothing ships" — it said the latter once, and cost an afternoon spent
-# looking for a lane that was already there.
+# Tabs IS deployed from this repo — `.hanzo/workflows/release.yml` publishes the
+# static export to the Sites plane (project `tabs`) on every push to main, and
+# that is what tabs.hanzo.ai serves. There is no `images:` and no `deploy:` here
+# because neither describes that: the ingress serves the export straight from
+# s3://hanzo-sites/hanzo/tabs, so this repo builds no image and rolls out no
+# workload. Read the absence as "nothing to build", not as "nothing ships".
 #
 # The gate is typecheck, the jest suite, and the surface guard. Jest is
 # deliberately narrow and says so in its own config — "pure logic only: the
@@ -30,11 +28,14 @@ test:
   - name: build
     run: |
       set -e
-      npm ci
-      npm run typecheck
-      npm test
+      pnpm install --frozen-lockfile
+      pnpm typecheck
+      pnpm test
   - name: surface
     run: |
       set -e
-      npx playwright install --with-deps chromium
-      npm run test:surface
+      # The runner image bakes browsers under /opt/playwright as root, so the
+      # job's own copy goes where the job may write.
+      export PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/ms-playwright"
+      pnpm exec playwright install chromium
+      pnpm test:surface

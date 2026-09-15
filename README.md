@@ -63,10 +63,10 @@ by the machine, not by this site.
 ## Develop
 
 ```bash
-npm install
-npm run dev          # http://localhost:3000
-npm test             # the layout engine and bindings
-npm run typecheck
+pnpm install
+pnpm dev             # http://localhost:3000
+pnpm test            # the layout engine and bindings
+pnpm typecheck
 ```
 
 MIT.

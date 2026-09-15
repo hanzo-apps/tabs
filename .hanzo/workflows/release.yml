@@ -1,0 +1,61 @@
+name: Release
+# Publishes tabs.hanzo.ai.
+#
+# Tabs is a STATIC EXPORT, so a release is a site publish, not an image build.
+# hanzoai/ci's site action uploads `out/` to the Sites plane as project `tabs`,
+# which lands in s3://hanzo-sites/hanzo/tabs, the prefix the tabs.hanzo.ai route
+# serves (universe charts/app/values/hanzo/static-sites.yaml). The action reads
+# the deploy key from KMS and uploads under a prefix-scoped presigned grant, so
+# no bucket credential belongs here.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', '.hanzo/workflows/**']
+  workflow_dispatch:
+concurrency: { group: release-tabs, cancel-in-progress: false }
+jobs:
+  publish:
+    runs-on: [linux-amd64]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # package.json's `packageManager` is the one place pnpm is pinned.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: The layout engine and the bindings
+        run: pnpm test
+
+      - name: Export
+        run: pnpm build
+
+      # A build that emitted no app page is a green run that publishes a blank
+      # site. Caught here rather than in a browser.
+      - name: The export is complete
+        run: |
+          set -euo pipefail
+          for f in index.html app/index.html auth/callback/index.html; do
+            [ -s "out/$f" ] || { echo "::error::missing or empty: out/$f"; exit 1; }
+          done
+          # The component sheet is what makes the page drawn rather than bare.
+          grep -rlq -- '--hanzo-ui-styles' out/_next/static/css \
+            || { echo "::error::@hanzo/ui/styles.css is not in the export"; exit 1; }
+
+      - name: Publish to the Sites plane
+        uses: hanzoai/ci/.github/actions/site@v1
+        with:
+          slug: tabs
+          dir: out
+        env:
+          KMS_CLIENT_ID: ${{ secrets.KMS_CLIENT_ID }}
+          KMS_CLIENT_SECRET: ${{ secrets.KMS_CLIENT_SECRET }}

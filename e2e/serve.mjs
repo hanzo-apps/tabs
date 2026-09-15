@@ -1,9 +1,10 @@
 // Serves the export the way the bucket does, so the guard tests what ships.
 //
-// hanzoai/static fronts the `tabs` bucket and resolves a directory to its
-// index.html; trailingSlash: true in next.config.mjs is what makes every route a
-// directory. This does the same two things and nothing else — a test server that
-// resolves paths differently from production would pass on pages that 404 live.
+// The ingress serves the export from s3://hanzo-sites/hanzo/tabs and resolves a
+// directory to its index.html; trailingSlash: true in next.config.mjs is what
+// makes every route a directory. This does the same two things and nothing
+// else — a test server that resolves paths differently from production would
+// pass on pages that 404 live.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, extname } from 'node:path';
