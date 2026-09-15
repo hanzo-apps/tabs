@@ -73,12 +73,12 @@ import {
   splitPane,
   stableOrder,
   stackFor,
-} from '@/lib/tiles';
+} from '../lib/tiles';
 // One import, and it is a PURE READING of an error — no origin, no token, no
 // request. The workspace still holds no credential; what it gains is the
 // platform's own word for "no money", which is the one failure whose remedy
 // differs from every other.
-import { unfunded } from '@/lib/api';
+import { unfunded } from '../lib/api';
 import {
   DEADLINE,
   DOT,
@@ -91,7 +91,7 @@ import {
   rescued,
   web,
   restore,
-} from '@/lib/panes';
+} from '../lib/panes';
 
 /** The stack's own props, taken from the stack. @hanzo/ui is the one import
  *  source, so a local alias beats reaching past it to @hanzo/gui for a type. */

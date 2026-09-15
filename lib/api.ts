@@ -7,7 +7,23 @@
  * party to a conversation that has two, and one more thing to keep running.
  */
 
-export const API = process.env.NEXT_PUBLIC_HANZO_API ?? 'https://api.hanzo.ai';
+/**
+ * Where the control plane answers.
+ *
+ * A DEFAULT, not a constant, because this module is read by two hosts now: the
+ * web app at tabs.hanzo.ai, and the desktop shell, which points at whichever
+ * cloud its identity belongs to. Every function here already takes a token, so
+ * it takes the origin the same way — a parameter with this as its default,
+ * rather than module state a second host would have to remember to set before
+ * the first call.
+ *
+ * `process.env` is read defensively: a bundler that does not define it leaves
+ * the identifier undefined rather than an empty object, and reading a property
+ * off that throws at module load.
+ */
+export const API =
+  (typeof process !== 'undefined' ? process.env?.NEXT_PUBLIC_HANZO_API : undefined) ??
+  'https://api.hanzo.ai';
 
 export interface Machine {
   id: string;
@@ -68,8 +84,8 @@ async function refusal(res: Response, fallback: string): Promise<Refusal> {
     : new Refusal(res.status, '', e || fallback);
 }
 
-async function read<T>(path: string, token: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, {
+async function read<T>(path: string, token: string, origin = API): Promise<T> {
+  const res = await fetch(`${origin}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   });
@@ -77,11 +93,13 @@ async function read<T>(path: string, token: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-export const machines = (token: string) =>
-  read<{ targets: Machine[] }>('/v1/agents/targets', token).then((r) => r.targets ?? []);
+export const machines = (token: string, origin = API) =>
+  read<{ targets: Machine[] }>('/v1/agents/targets', token, origin).then((r) => r.targets ?? []);
 
-export const sessions = (token: string) =>
-  read<{ sessions: Session[] }>('/v1/agents/sessions?limit=200', token).then((r) => r.sessions ?? []);
+export const sessions = (token: string, origin = API) =>
+  read<{ sessions: Session[] }>('/v1/agents/sessions?limit=200', token, origin).then(
+    (r) => r.sessions ?? [],
+  );
 
 /**
  * Sandboxes — the machines we start for you, rather than the ones you linked.
@@ -109,8 +127,8 @@ export interface SandboxMachine {
   class?: string;
 }
 
-export const sandboxes = (token: string) =>
-  read<{ sandboxes?: SandboxMachine[] }>('/v1/sandboxes?status=running', token).then((r) =>
+export const sandboxes = (token: string, origin = API) =>
+  read<{ sandboxes?: SandboxMachine[] }>('/v1/sandboxes?status=running', token, origin).then((r) =>
     (r.sandboxes ?? []).filter((s) => s.status === 'running'),
   );
 
@@ -147,7 +165,11 @@ export type Class = 'dev' | 'desktop';
  * should live, and a `ttlSec` here would be a second answer to drift from the one
  * in the class table.
  */
-export const createSandbox = async (token: string, kind: Class = 'dev'): Promise<SandboxMachine> => {
+export const createSandbox = async (
+  token: string,
+  kind: Class = 'dev',
+  origin = API,
+): Promise<SandboxMachine> => {
   const taken = new Set((await sandboxes(token)).map(machineName));
   // Every machine carries its number, the first one included: `cloud` beside
   // `cloud-2` reads as a different kind of thing rather than the one before it.
@@ -155,7 +177,7 @@ export const createSandbox = async (token: string, kind: Class = 'dev'): Promise
   const stem = STEM[kind];
   let project = `${stem}-1`;
   for (let n = 2; taken.has(project); n++) project = `${stem}-${n}`;
-  const res = await fetch(`${API}/v1/sandboxes`, {
+  const res = await fetch(`${origin}/v1/sandboxes`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ class: kind, project }),
@@ -229,8 +251,9 @@ export const frameUrl = async (
   id: string,
   door: Door,
   arg?: string,
+  origin = API,
 ): Promise<string> => {
-  const res = await fetch(`${API}/v1/sandboxes/${encodeURIComponent(id)}/${door}/ticket`, {
+  const res = await fetch(`${origin}/v1/sandboxes/${encodeURIComponent(id)}/${door}/ticket`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
@@ -238,5 +261,5 @@ export const frameUrl = async (
   if (!res.ok) throw new Error(`${door} ticket → ${res.status}`);
   const body = (await res.json()) as { url?: string };
   if (!body.url) throw new Error(`${door} ticket → empty answer`);
-  return `${API}${body.url}` + (arg ? `&arg=${encodeURIComponent(arg)}` : '');
+  return `${origin}${body.url}` + (arg ? `&arg=${encodeURIComponent(arg)}` : '');
 };
