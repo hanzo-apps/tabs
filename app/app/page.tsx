@@ -18,31 +18,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Anchor, Button, Fill, H1, Paragraph, Screen, SizableText, YStack } from '@hanzo/ui';
 
-import {
-  type Machine,
-  type SandboxMachine,
-  type Session,
-  createSandbox,
-  frameUrl,
-  grant,
-  machineName,
-  machines,
-  sandboxes,
-  sessions,
-} from '@/lib/api';
-import { AMBER, type Binding, shellUrl } from '@/lib/panes';
+import { AMBER } from '@/lib/panes';
+import { useFleet } from '@/lib/fleet';
 import { renew, session, signIn, signOut } from '@/lib/iam';
-import { Workspace, type TerminalHost } from '@/components/workspace';
+import { Workspace } from '@/components/workspace';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [data, setData] = useState<{
-    m: Machine[];
-    s: Session[];
-    b: SandboxMachine[];
-  } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { hosts, read, error, mint, launch } = useFleet(token);
+  /** A sign-in that did not go through. The fleet's `error` is about the
+   *  registry, which is a different failure with a different remedy. */
+  const [refused, setRefused] = useState<string | null>(null);
 
   // The session this browser already holds, renewed if the access token has
   // aged out. Tabs is a window you leave open all day watching agents work, so
@@ -57,123 +44,15 @@ export default function App() {
     void renew().then((r) => setToken(r.accessToken));
   }, []);
 
-  const refresh = useCallback(async (t: string) => {
-    try {
-      // The registry is where machines and terminals come from, and it is what
-      // holds this page up. Sandboxes are a SECOND read against the same plane:
-      // caught here rather than reported, because their absence costs you those
-      // panes and nothing else, and a banner about boxes you may not have is
-      // noise on a workspace that still works. It is worth saying out loud at
-      // the launch button, which is the one place it stops you.
-      const [m, s, b] = await Promise.all([
-        machines(t),
-        sessions(t),
-        sandboxes(t).catch(() => []),
-      ]);
-      setData({ m, s, b });
-      setError(null);
-    } catch (e) {
-      // A registry that cannot be read is reported as such. Rendering an empty
-      // workspace would claim "no machines", which is a different and wrong thing.
-      setError(e instanceof Error ? e.message : 'could not reach the registry');
-    }
-  }, []);
-
+  // Renewed on its own clock, well inside the access token's hour, so a
+  // workspace left open keeps reading the registry instead of quietly failing
+  // every poll until someone notices the panes have gone stale. The registry's
+  // own polling is the hook's.
   useEffect(() => {
     if (!token) return;
-    void refresh(token);
-    // Machines heartbeat every 30s and the plane calls one stale after 90s, so
-    // polling faster than the fact changes would only cost requests.
-    const t = setInterval(() => void refresh(token), 30_000);
-    // Renewed on its own clock, well inside the access token's hour, so a
-    // workspace left open keeps reading the registry instead of quietly failing
-    // every poll until someone notices the panes have gone stale.
-    const r = setInterval(() => void renew().then((s) => setToken(s.accessToken)), 10 * 60_000);
-    return () => {
-      clearInterval(t);
-      clearInterval(r);
-    };
-  }, [token, refresh]);
-
-  /** Machines that can serve shells, and the tunnel each one's terminals live on.
-   *
-   *  A terminal URL is a fact about the MACHINE — one link, one ttyd, one tunnel
-   *  — so it is read from whichever of its sessions published one, rather than
-   *  treated as a property of that session. The workspace then names a shell per
-   *  pane with `?arg=`, so one link serves many. */
-  const hosts = useMemo<TerminalHost[]>(() => {
-    if (!data) return [];
-    const base = new Map<string, string>();
-    for (const s of data.s) {
-      if (!s.terminal || !s.host) continue;
-      if (s.status !== 'running' && s.status !== 'paused') continue;
-      if (!base.has(s.host)) base.set(s.host, s.terminal);
-    }
-    const out = new Map<string, TerminalHost>();
-    for (const m of data.m) {
-      const key = m.host || m.label || m.id;
-      out.set(key, { machine: key, base: base.get(key), status: m.status, label: m.capacity });
-    }
-    for (const [host, url] of base) {
-      if (!out.has(host)) out.set(host, { machine: host, base: url, status: 'online' });
-    }
-    // The sandboxes. A sandbox has no tunnel to publish — its terminal URL is
-    // MINTED per open (single-use ticket), so the host carries the sandbox id
-    // instead of a base and the workspace mints when a pane binds. One live
-    // sandbox per project is the server's rule, so the project name is a
-    // stable, unique machine name.
-    for (const s of data.b) {
-      const key = machineName(s);
-      if (!out.has(key)) {
-        // `screen` is the machine's own class, not a guess: only a desktop
-        // sandbox runs an X server, so only a desktop has pixels to frame.
-        out.set(key, {
-          machine: key,
-          sandbox: s.id,
-          screen: s.class === 'desktop',
-          status: 'online',
-        });
-      }
-    }
-    return [...out.values()];
-  }, [data]);
-
-  /**
-   * A fresh URL for a pane, minted here where the token lives so the workspace
-   * stays credential-free.
-   *
-   * ONE ACT, WHOEVER SERVES THE PAGE. A sandbox's terminal is hosted by cloud
-   * and opened by a single-use ticket; a linked machine's is served by the
-   * machine over its own tunnel, and what that tunnel wants is a session for
-   * the identity this browser is already holding. Both are "ask with the token,
-   * then frame the answer", which is why the workspace no longer knows or cares
-   * which kind of machine a pane is bound to — and why a linked machine's
-   * terminal is now the same signed-in person as the page around it, instead of
-   * a second sign-in on another domain.
-   *
-   * What the pane SHOWS picks the address: a shell attaches to its tmux session by
-   * name, a screen has one display and needs no name. A tunnel publishes a
-   * terminal and nothing else, so a linked machine has no screen to open.
-   */
-  const mint = useCallback(
-    async (host: TerminalHost, what: Binding) => {
-      if (!token) throw new Error('signed out');
-      if (host.sandbox) {
-        return what.kind === 'screen'
-          ? frameUrl(token, host.sandbox, 'screen')
-          : frameUrl(
-              token,
-              host.sandbox,
-              'terminal',
-              what.kind === 'shell' ? what.shell.name : undefined,
-            );
-      }
-      if (!host.base || what.kind !== 'shell') throw new Error('this machine serves no terminal');
-      await grant(token, host.base);
-      return shellUrl(host.base, what.shell.name);
-    },
-    [token],
-  );
+    const r = setInterval(() => void renew().then((v) => setToken(v.accessToken)), 10 * 60_000);
+    return () => clearInterval(r);
+  }, [token]);
 
   if (!token) {
     return (
@@ -201,16 +80,16 @@ export default function App() {
           onPress={() => {
             setBusy(true);
             signIn('/app').catch((e) => {
-              setError(e instanceof Error ? e.message : 'sign-in failed');
+              setRefused(e instanceof Error ? e.message : 'sign-in failed');
               setBusy(false);
             });
           }}
         >
           {busy ? 'Taking you to hanzo.id…' : 'Continue with Hanzo'}
         </Button>
-        {error ? (
+        {refused ? (
           <Paragraph marginTop="$3" size="$1" color={AMBER}>
-            {error}
+            {refused}
           </Paragraph>
         ) : null}
         {/* The way back off a sign-in wall is the one link that must be easy to hit,
@@ -234,7 +113,7 @@ export default function App() {
   return (
     <Screen render="main" height="100dvh" padding="$1.5">
       <Fill scroll={false}>
-        {data ? (
+        {read ? (
           <Workspace
             hosts={hosts}
             mint={mint}
@@ -268,7 +147,6 @@ export default function App() {
                   onPress={() => {
                     void signOut();
                     setToken(null);
-                    setData(null);
                   }}
                 >
                   Disconnect
@@ -279,11 +157,10 @@ export default function App() {
             // opens a shell on the name it gets, and a pane can only mint a
             // ticket for a machine the registry has already handed back, so the
             // refresh is what stands between the two.
-            onLaunch={async (kind) => {
-              const box = await createSandbox(token, kind);
-              await refresh(token);
-              return machineName(box);
-            }}
+            // Started, then read back, then named — `launch` keeps that order,
+            // because a pane can only mint a ticket for a machine the registry
+            // has already handed back.
+            onLaunch={launch}
           />
         ) : (
           <YStack flex={1} alignItems="center" justifyContent="center">

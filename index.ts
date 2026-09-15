@@ -20,6 +20,16 @@
  */
 export { Workspace } from './components/workspace';
 
+/**
+ * The wiring, so a host supplies a token and nothing else.
+ *
+ * `useFleet` reads the registry, folds sessions and sandboxes into machines,
+ * mints a url per pane and polls on the plane's own clock. It was the web app's
+ * page; copied into each host it would be three answers to how often a machine
+ * goes stale.
+ */
+export { type Fleet, useFleet } from './lib/fleet';
+
 export {
   DEFAULT_SHELL,
   DEADLINE,
@@ -27,6 +37,7 @@ export {
   READY,
   type Binding,
   type Shell,
+  type TerminalHost,
   host,
   isReady,
   label,

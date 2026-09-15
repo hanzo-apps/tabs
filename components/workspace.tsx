@@ -60,6 +60,9 @@ import {
 import { Button, Input, Paragraph, SizableText, XStack, YStack } from '@hanzo/ui';
 
 import {
+  type TerminalHost,
+} from '../lib/panes';
+import {
   type Dir,
   type Geometry,
   type Path,
@@ -101,22 +104,6 @@ type StackProps = React.ComponentProps<typeof YStack>;
  *  caller actually writes, so spreading Stack props onto a Button conflicts
  *  there and nowhere else. Layout props reach it either way. */
 type ButtonProps = React.ComponentProps<typeof Button>;
-
-/** A machine that can serve shells: its name and the tunnel its terminals live on. */
-export interface TerminalHost {
-  machine: string;
-  /** The share URL `hanzo link` published. Absent ⇒ nothing to frame. */
-  base?: string;
-  /** A sandbox's id. Its URLs are MINTED per open (single-use ticket) rather
-   *  than published, so a sandbox host has this and no base. */
-  sandbox?: string;
-  /** Whether this machine has a DISPLAY to watch. It is the machine's own
-   *  answer — a `desktop` sandbox runs an X server and a VNC server, the other
-   *  classes have neither — and never inferred from a name. */
-  screen?: boolean;
-  status: string;
-  label?: string;
-}
 
 const STORE_KEY = 'hanzo.tabs.layout.v1';
 
