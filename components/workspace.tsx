@@ -42,7 +42,16 @@
  *    rather than merely redundant.
  */
 
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+  type SyntheticEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -1034,7 +1043,9 @@ export function Workspace({
                       // — never ours. What is withheld is top-navigation and popups.
                       sandbox="allow-scripts allow-same-origin allow-forms"
                       ref={(el) => probe(id, el)}
-                      onLoad={(e) => probe(id, e.currentTarget)}
+                      onLoad={(e: SyntheticEvent<HTMLIFrameElement>) =>
+                        probe(id, e.currentTarget)
+                      }
                       style={{
                         position: 'absolute',
                         inset: 0,
@@ -1165,7 +1176,7 @@ export function Workspace({
             return (
               <YStack
                 key={d.path.join('') || 'root'}
-                onPointerDown={(e) => {
+                onPointerDown={(e: ReactPointerEvent<HTMLElement>) => {
                   e.preventDefault();
                   e.currentTarget.setPointerCapture?.(e.pointerId);
                   setDrag({ path: d.path, dir: d.dir });
