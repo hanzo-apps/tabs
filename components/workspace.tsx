@@ -104,6 +104,7 @@ import {
   web,
   restore,
 } from '../lib/panes';
+import { UPGRADE, over } from '../lib/plan';
 
 /** The stack's own props, taken from the stack. @hanzo/ui is the one import
  *  source, so a local alias beats reaching past it to @hanzo/gui for a type. */
@@ -304,6 +305,7 @@ export function Workspace({
   hosts,
   mint,
   onLaunch,
+  streams = null,
   start,
   end,
 }: {
@@ -321,6 +323,9 @@ export function Workspace({
   mint?: (host: TerminalHost, what: Binding) => Promise<string>;
   /** Start a cloud machine of one class, and answer the name it goes by here. */
   onLaunch?: (kind: 'dev' | 'desktop') => Promise<string>;
+  /** How many tabs the plan lets stream at once (`lib/plan.ts`): 0 none, N a cap,
+   *  -1 no cap, null not told — which enforces nothing. */
+  streams?: number | null;
 }) {
   // A machine with no `base` serves no terminal, and there is nothing to open on
   // one of those — except a sandbox, whose URL is minted on bind rather than
@@ -668,6 +673,8 @@ export function Workspace({
     target: string | null;
   }>(null);
   const rendered = useMemo(() => order.filter((id) => bind[id]), [order, bind]);
+  /** The panes past what the plan streams. They are kept and shown, never minted. */
+  const capped = useMemo(() => over(rendered, bind, streams), [rendered, bind, streams]);
 
   // A PANE'S URL IS MINTED, NEVER DERIVED — for every machine, not only the
   // ones we start. Minted per PANE and kept until that pane reconnects, because
@@ -687,7 +694,7 @@ export function Workspace({
       const m = b && (b.kind === 'shell' || b.kind === 'screen') ? machineOf(b) : null;
       if (!b || !m) continue;
       const h = hostOf(m);
-      if (!h || minted[id] || minting.current.has(id)) continue;
+      if (!h || minted[id] || minting.current.has(id) || capped.has(id)) continue;
       minting.current.add(id);
       mint(h, b)
         .then((src) => setMinted((m) => ({ ...m, [id]: src })))
@@ -696,7 +703,7 @@ export function Workspace({
         .catch(() => setWaited((w) => ({ ...w, [id]: true })))
         .finally(() => minting.current.delete(id));
     }
-  }, [rendered, bind, hostOf, mint, minted]);
+  }, [rendered, bind, hostOf, mint, minted, capped]);
 
   /** Reconnect a pane: forget the spent URL and the frame's history so the mint
    *  effect runs again with a fresh credential and the deadline re-arms. */
@@ -942,7 +949,7 @@ export function Workspace({
             // screen and never gets one.
             // A page's url IS its binding — there is no credential to mint and
             // nothing spent by framing it. Everything else waits for the mint.
-            const url = b.kind === 'page' ? b.url : (minted[id] ?? null);
+            const url = capped.has(id) ? null : b.kind === 'page' ? b.url : (minted[id] ?? null);
             // Every rect is page-relative; the track is `pages * 100%` wide, so a
             // page occupies `100/pages` of it.
             const left = paging ? r.left / pages : r.left;
@@ -1058,7 +1065,23 @@ export function Workspace({
                     />
                   ) : null}
 
-                  {b.kind === 'empty' ? (
+                  {capped.has(id) ? (
+                    <Cover gap="$2">
+                      <Note>
+                        {streams === 0
+                          ? 'Your plan does not stream tabs.'
+                          : `Your plan streams ${streams} ${streams === 1 ? 'tab' : 'tabs'} at once.`}{' '}
+                        This one is kept and opens when a place frees up or you upgrade.
+                      </Note>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onPress={() => window.open(UPGRADE, '_blank', 'noopener,noreferrer')}
+                      >
+                        See plans
+                      </Button>
+                    </Cover>
+                  ) : b.kind === 'empty' ? (
                     <Cover padding="$3">
                       <Picker
                         hosts={live}

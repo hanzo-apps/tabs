@@ -31,6 +31,7 @@ import {
   sessions,
 } from './api';
 import { type Binding, type TerminalHost, shellUrl } from './panes';
+import { streams as readStreams } from './plan';
 
 /** Machines heartbeat every 30s and the plane calls one stale after 90s, so
  *  polling faster than the fact changes would only cost requests. */
@@ -39,6 +40,9 @@ const BEAT = 30_000;
 export interface Fleet {
   /** The machines, folded. Empty until the first read lands. */
   hosts: TerminalHost[];
+  /** How many tabs the plan lets stream at once; null when the cloud does not
+   *  say, which the workspace reads as no limit to enforce (`lib/plan.ts`). */
+  streams: number | null;
   /** Whether a read has landed at all — which is a different fact from having
    *  no machines, and the one a caller needs to avoid claiming the second. */
   read: boolean;
@@ -57,6 +61,7 @@ export function useFleet(token: string | null, origin: string = API): Fleet {
     m: Machine[];
     s: Session[];
     b: SandboxMachine[];
+    n: number | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,12 +73,15 @@ export function useFleet(token: string | null, origin: string = API): Fleet {
         // because their absence costs those panes and nothing else, and a
         // banner about boxes you may not have is noise on a workspace that
         // still works.
-        const [m, s, b] = await Promise.all([
+        const [m, s, b, n] = await Promise.all([
           machines(t, origin),
           sessions(t, origin),
           sandboxes(t, origin).catch(() => []),
+          // The plan's answer is not the registry's: a cloud that cannot give it
+          // leaves the workspace unmetered rather than empty.
+          readStreams(t, origin).catch(() => null),
         ]);
-        setData({ m, s, b });
+        setData({ m, s, b, n });
         setError(null);
       } catch (e) {
         // A registry that cannot be read is reported as such. Rendering an
@@ -181,5 +189,5 @@ export function useFleet(token: string | null, origin: string = API): Fleet {
     [token, origin, read],
   );
 
-  return { hosts, read: data !== null, error, mint, launch, refresh };
+  return { hosts, streams: data?.n ?? null, read: data !== null, error, mint, launch, refresh };
 }
