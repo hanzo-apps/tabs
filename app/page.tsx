@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Anchor, Button, H1, Paragraph, SizableText, XStack, YStack } from '@hanzo/ui';
 
+import { Resume } from '@/components/resume';
+
 export const metadata = {
   title: 'Hanzo Tabs — keep tabs on your agents',
   description:
@@ -45,6 +47,7 @@ export default function Marketing() {
       paddingHorizontal="$5"
       paddingVertical="$11"
     >
+      <Resume />
       <SizableText
         fontFamily="$mono"
         size="$1"

@@ -89,6 +89,12 @@ test.describe('the signed-in workspace', () => {
     await page.screenshot({ path: 'test-results/workspace-capped.png' });
   });
 
+  test('the front page sends a signed-in reader to the workspace', async ({ page }) => {
+    await mount(page, { tier: 'dev', apps: {}, tabs: 2 });
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/app\/$/);
+  });
+
   test('a plan that streams none streams none', async ({ page }) => {
     await mount(page, { tier: 'free', apps: {}, tabs: 0 });
     await page.goto('/app/');
