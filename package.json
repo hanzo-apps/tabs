@@ -11,9 +11,6 @@
     "typecheck": "tsc --noEmit",
     "test:surface": "next build --webpack && playwright test"
   },
-  "dependencies": {
-    "react-hook-form": "catalog:"
-  },
   "devDependencies": {
     "@hanzo/design": "catalog:",
     "@hanzo/gui": "catalog:",
