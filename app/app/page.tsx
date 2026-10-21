@@ -58,24 +58,24 @@ export default function App() {
     return (
       <YStack
         render="main"
-        minHeight="100dvh"
+        minH="100dvh"
         width="100%"
-        maxWidth={448}
-        marginHorizontal="auto"
-        justifyContent="center"
-        paddingHorizontal="$5"
+        maxW={448}
+        mx="auto"
+        justify="center"
+        px="$5"
       >
         <H1 size="$6" fontWeight="600">
           Sign in
         </H1>
-        <Paragraph marginTop="$2" size="$2" color="var(--muted-foreground)">
+        <Paragraph mt="$2" size="$2" color="var(--muted-foreground)">
           Tabs reads your machines with your own Hanzo identity. It has no backend, so
           nothing about your session is stored anywhere but this browser.
         </Paragraph>
         <Button
           variant="primary"
-          marginTop="$4.5"
-          minHeight={44}
+          mt="$4.5"
+          minH={44}
           disabled={busy}
           onPress={() => {
             setBusy(true);
@@ -88,7 +88,7 @@ export default function App() {
           {busy ? 'Taking you to hanzo.id…' : 'Continue with Hanzo'}
         </Button>
         {refused ? (
-          <Paragraph marginTop="$3" size="$1" color={AMBER}>
+          <Paragraph mt="$3" size="$1" color={AMBER}>
             {refused}
           </Paragraph>
         ) : null}
@@ -97,10 +97,10 @@ export default function App() {
         <Anchor
           render={<Link href="/" />}
           size="$1"
-          marginTop="$4"
-          minHeight={44}
+          mt="$4"
+          minH={44}
           display="inline-flex"
-          alignItems="center"
+          items="center"
           color="var(--text-disabled)"
           hoverStyle={{ color: 'var(--muted-foreground)' }}
         >
@@ -111,7 +111,7 @@ export default function App() {
   }
 
   return (
-    <Screen render="main" height="100dvh" padding="$1.5">
+    <Screen render="main" height="100dvh" p="$1.5">
       <Fill scroll={false}>
         {read ? (
           <Workspace
@@ -126,7 +126,7 @@ export default function App() {
               <Anchor
                 render={<Link href="/" />}
                 size="$1"
-                flexShrink={0}
+                shrink={0}
                 fontFamily="$mono"
                 color="var(--text-secondary)"
                 hoverStyle={{ color: '$color' }}
@@ -144,7 +144,7 @@ export default function App() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  flexShrink={0}
+                  shrink={0}
                   onPress={() => {
                     void signOut();
                     setToken(null);
@@ -164,7 +164,7 @@ export default function App() {
             onLaunch={launch}
           />
         ) : (
-          <YStack flex={1} alignItems="center" justifyContent="center">
+          <YStack flex={1} items="center" justify="center">
             <SizableText size="$2" color="var(--text-disabled)">
               {error ? 'The registry is unavailable.' : 'Reading your machines…'}
             </SizableText>
@@ -180,15 +180,15 @@ export default function App() {
         render={<a href="https://hanzo.chat" target="_blank" rel="noreferrer noopener" />}
         size="icon"
         position="fixed"
-        bottom="$4"
-        right="$4"
-        zIndex={40}
-        minWidth={44}
-        minHeight={44}
-        borderRadius={9999}
-        backgroundColor="var(--card)"
+        b="$4"
+        r="$4"
+        z={40}
+        minW={44}
+        minH={44}
+        rounded={9999}
+        bg="var(--card)"
         boxShadow="var(--shadow-lg)"
-        hoverStyle={{ backgroundColor: 'var(--muted)' }}
+        hoverStyle={{ bg: 'var(--muted)' }}
         title="Ask Hanzo"
         aria-label="Ask Hanzo"
       >

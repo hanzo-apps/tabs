@@ -1,6 +1,6 @@
 {
   "name": "@hanzo/tabs",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "license": "MIT",
   "description": "Keep tabs on your agents. A browser terminal workspace for machines you have linked \u2014 the app at tabs.hanzo.ai, and the component its other hosts mount.",
   "scripts": {
@@ -48,14 +48,15 @@
     "lib/api.ts",
     "lib/fleet.ts",
     "lib/panes.ts",
+    "lib/plan.ts",
     "lib/tiles.ts",
     "README.md",
     "LICENSE"
   ],
   "sideEffects": false,
   "peerDependencies": {
-    "@hanzo/gui": "^8.3.1",
-    "@hanzo/ui": "^8.27.2",
+    "@hanzo/gui": "^8.3.5",
+    "@hanzo/ui": "^8.28.0",
     "lucide-react": "^1.33.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

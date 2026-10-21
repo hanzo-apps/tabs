@@ -79,9 +79,8 @@ async function refusal(res: Response, fallback: string): Promise<Refusal> {
     | { error?: string | { code?: string; message?: string } }
     | null;
   const e = body?.error;
-  return typeof e === 'object' && e !== null
-    ? new Refusal(res.status, e.code ?? '', e.message || fallback)
-    : new Refusal(res.status, '', e || fallback);
+  if (typeof e === 'string') return new Refusal(res.status, '', e || fallback);
+  return new Refusal(res.status, e?.code ?? '', e?.message || fallback);
 }
 
 async function read<T>(path: string, token: string, origin = API): Promise<T> {

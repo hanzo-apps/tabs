@@ -231,7 +231,7 @@ export function proves(b: Binding): boolean {
  * bent into a token that means something else. */
 export const AMBER = '#f59e0b';
 
-export const DOT: Record<string, string> = {
+export const DOT: Record<string, `var(--${string})` | `#${string}`> = {
   running: 'var(--state-online)',
   paused: AMBER,
   done: 'var(--text-disabled)',

@@ -15,23 +15,23 @@ export default function Callback() {
   return (
     <YStack
       render="main"
-      minHeight="100dvh"
-      maxWidth={448}
+      minH="100dvh"
+      maxW={448}
       width="100%"
-      marginHorizontal="auto"
-      justifyContent="center"
-      paddingHorizontal="$5"
+      mx="auto"
+      justify="center"
+      px="$5"
     >
       {error ? (
         <>
-          <Paragraph size="$2" textAlign="center" color="var(--text-secondary)">
+          <Paragraph size="$2" text="center" color="var(--text-secondary)">
             {error}
           </Paragraph>
           <Anchor
             href="/app"
             size="$1"
-            textAlign="center"
-            marginTop="$3"
+            text="center"
+            mt="$3"
             color="var(--text-tertiary)"
             hoverStyle={{ color: 'var(--text-secondary)' }}
           >
@@ -39,7 +39,7 @@ export default function Callback() {
           </Anchor>
         </>
       ) : (
-        <Paragraph size="$2" textAlign="center" color="var(--text-tertiary)">
+        <Paragraph size="$2" text="center" color="var(--text-tertiary)">
           Signing you in…
         </Paragraph>
       )}

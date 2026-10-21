@@ -175,10 +175,10 @@ function Cover({ children, ...rest }: StackProps) {
     <YStack
       position="absolute"
       inset={0}
-      zIndex={10}
-      alignItems="center"
-      justifyContent="center"
-      paddingHorizontal="$4"
+      z={10}
+      items="center"
+      justify="center"
+      px="$4"
       {...rest}
     >
       {children}
@@ -189,7 +189,7 @@ function Cover({ children, ...rest }: StackProps) {
 /** What a cover says. Narrow, small, quiet, centred — the pane is the subject. */
 function Note({ children }: { children: ReactNode }) {
   return (
-    <Paragraph maxWidth={320} size="$1" textAlign="center" color="var(--muted-foreground)">
+    <Paragraph maxW={320} size="$1" text="center" color="var(--muted-foreground)">
       {children}
     </Paragraph>
   );
@@ -202,9 +202,9 @@ function Dot({ status }: { status: string }) {
       aria-hidden
       width={6}
       height={6}
-      flexShrink={0}
-      borderRadius={9999}
-      backgroundColor={DOT[status] ?? DOT.offline}
+      shrink={0}
+      rounded={9999}
+      bg={DOT[status] ?? DOT.offline}
     />
   );
 }
@@ -220,9 +220,9 @@ function Chip({
     <Button
       variant="ghost"
       size="icon-sm"
-      minWidth={CHIP}
-      minHeight={CHIP}
-      borderRadius={4}
+      minW={CHIP}
+      minH={CHIP}
+      rounded={4}
       title={title}
       aria-label={title}
       onPress={run}
@@ -290,13 +290,13 @@ function Address({
       }}
       onBlur={() => setTyped(null)}
       flex={1}
-      minWidth={0}
+      minW={0}
       height={CHIP}
-      borderRadius={4}
+      rounded={4}
       fontSize={12}
-      paddingHorizontal="$2"
+      px="$2"
       borderColor={refused ? 'var(--destructive)' : 'var(--border)'}
-      backgroundColor="var(--background)"
+      bg="var(--background)"
     />
   );
 }
@@ -722,16 +722,16 @@ export function Workspace({
       <YStack
         height="100%"
         width="100%"
-        alignItems="center"
-        justifyContent="center"
+        items="center"
+        justify="center"
         gap="$3"
-        paddingHorizontal="$5"
-        borderRadius="$4"
+        px="$5"
+        rounded="$4"
         borderWidth={1}
         borderStyle="dashed"
         borderColor="$borderColor"
       >
-        <Paragraph maxWidth={384} size="$2" textAlign="center" color="var(--muted-foreground)">
+        <Paragraph maxW={384} size="$2" text="center" color="var(--muted-foreground)">
           No machine is serving terminals. Run{' '}
           <SizableText render="code" size="$2" fontFamily="$mono" color="$color">
             hanzo link
@@ -741,7 +741,7 @@ export function Workspace({
         {/* The header is not rendered in this branch, and someone with no machine
             at all is exactly who has nowhere else to get one. */}
         {onLaunch ? (
-          <XStack alignItems="center" gap="$1.5">
+          <XStack items="center" gap="$1.5">
             <Act run={() => launch('dev')} icon={<Cloud size={14} />} label="New cloud machine" />
             <Act run={() => launch('desktop')} icon={<Monitor size={14} />} label="New desktop" />
           </XStack>
@@ -773,7 +773,7 @@ export function Workspace({
   return (
     <YStack height="100%" width="100%" gap="$1.5">
       {/* One row. Actions, not a status report. */}
-      <XStack flexShrink={0} alignItems="center" gap="$1.5">
+      <XStack shrink={0} items="center" gap="$1.5">
         {start}
         <Act
           run={() => openShell(focus ? 'row' : null, focus)}
@@ -803,22 +803,22 @@ export function Workspace({
             label="New cloud machine"
           />
         ) : null}
-        <XStack marginLeft="auto" flexShrink={0} alignItems="center" gap="$1">
+        <XStack ml="auto" shrink={0} items="center" gap="$1">
           {/* Type size. Two buttons and the number they move — a stepper IS the
               setting, so there is no panel to open and nothing to find. It reads
               its own state, which a slider or a menu would each need a second
               affordance to do. */}
           <XStack
-            marginRight="$1"
-            alignItems="center"
-            borderRadius="$2"
+            mr="$1"
+            items="center"
+            rounded="$2"
             borderWidth={1}
             borderColor="$borderColor"
           >
             <Button
               variant="ghost"
               size="sm"
-              paddingHorizontal="$2"
+              px="$2"
               onPress={() => setSize((n) => clampSize(n - SIZE.step))}
               disabled={size <= SIZE.min}
               title="Smaller text"
@@ -828,9 +828,9 @@ export function Workspace({
             </Button>
             <SizableText
               size="$1"
-              minWidth={24}
-              textAlign="center"
-              userSelect="none"
+              minW={24}
+              text="center"
+              select="none"
               style={{ fontVariantNumeric: 'tabular-nums' }}
               render={<span title="Terminal text size" />}
             >
@@ -839,7 +839,7 @@ export function Workspace({
             <Button
               variant="ghost"
               size="sm"
-              paddingHorizontal="$2"
+              px="$2"
               onPress={() => setSize((n) => clampSize(n + SIZE.step))}
               disabled={size >= SIZE.max}
               title="Larger text"
@@ -874,7 +874,7 @@ export function Workspace({
 
       {/* The phone's pager. One chip per PAGE, because pages are what you swipe. */}
       {paging && pages > 1 ? (
-        <XStack flexShrink={0} gap="$1" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+        <XStack shrink={0} gap="$1" style={{ overflowX: 'auto', overflowY: 'hidden' }}>
           {Array.from({ length: pages }, (_, i) => {
             const first = geo.rects.find((r) => Math.round(r.left / 100) === i);
             const b = first ? bind[first.id] : undefined;
@@ -884,9 +884,9 @@ export function Workspace({
                 key={i}
                 variant="ghost"
                 size="sm"
-                maxWidth={160}
-                flexShrink={0}
-                backgroundColor={i === page ? 'var(--muted)' : 'transparent'}
+                maxW={160}
+                shrink={0}
+                bg={i === page ? 'var(--muted)' : 'transparent'}
                 onPress={() => {
                   setPage(i);
                   if (first) setFocus(first.id);
@@ -915,12 +915,12 @@ export function Workspace({
         position="relative"
         width="100%"
         flex={1}
-        minHeight={0}
+        minH={0}
         overflow="hidden"
-        borderRadius="$4"
+        rounded="$4"
         borderWidth={1}
         borderColor="$borderColor"
-        backgroundColor="black"
+        bg="black"
       >
         <YStack
           position="absolute"
@@ -974,11 +974,11 @@ export function Workspace({
                     terminal, times the number of panes. */}
                 <XStack
                   height={BAR}
-                  flexShrink={0}
-                  alignItems="center"
+                  shrink={0}
+                  items="center"
                   gap="$1.5"
-                  paddingHorizontal="$2"
-                  backgroundColor={on ? 'var(--muted)' : 'var(--card)'}
+                  px="$2"
+                  bg={on ? 'var(--muted)' : 'var(--card)'}
                 >
                   {b.kind === 'page' ? (
                     <>
@@ -1017,7 +1017,7 @@ export function Workspace({
                     </>
                   )}
                   {paging ? null : (
-                    <XStack marginLeft="auto" alignItems="center" gap="$1">
+                    <XStack ml="auto" items="center" gap="$1">
                       <Chip run={() => openShell('row', id)} title="Split right">
                         <Columns2 size={14} />
                       </Chip>
@@ -1033,13 +1033,13 @@ export function Workspace({
                   <Chip
                     run={() => doClose(id)}
                     title="Close pane"
-                    marginLeft={paging ? 'auto' : 0}
+                    ml={paging ? 'auto' : 0}
                   >
                     <X size={paging ? 16 : 14} />
                   </Chip>
                 </XStack>
 
-                <YStack position="relative" flex={1} minHeight={0} backgroundColor="black">
+                <YStack position="relative" flex={1} minH={0} bg="black">
                   {url ? (
                     <iframe
                       data-pane={id}
@@ -1082,7 +1082,7 @@ export function Workspace({
                       </Button>
                     </Cover>
                   ) : b.kind === 'empty' ? (
-                    <Cover padding="$3">
+                    <Cover p="$3">
                       <Picker
                         hosts={live}
                         onPick={(m) =>
@@ -1176,12 +1176,12 @@ export function Workspace({
                     // and the URL cannot be reopened, only asked for again.
                     // NEVER a sign-in here: the mint IS the sign-in, and sending
                     // someone to a second one is what this stopped doing.
-                    <Cover gap="$3" backgroundColor="black">
+                    <Cover gap="$3" bg="black">
                       <Note>
                         {b.kind === 'screen' ? 'The desktop' : 'The terminal'} did not come up.
                         Reconnecting asks for a fresh credential and tries again.
                       </Note>
-                      <Button variant="outline" minHeight={44} onPress={() => reconnect(id)}>
+                      <Button variant="outline" minH={44} onPress={() => reconnect(id)}>
                         Reconnect
                       </Button>
                     </Cover>
@@ -1208,8 +1208,8 @@ export function Workspace({
                 role="separator"
                 aria-orientation={d.dir === 'row' ? 'vertical' : 'horizontal'}
                 position="absolute"
-                zIndex={20}
-                backgroundColor="transparent"
+                z={20}
+                bg="transparent"
                 cursor={d.dir === 'row' ? 'col-resize' : 'row-resize'}
                 x={d.dir === 'row' ? -thick / 2 : 0}
                 y={d.dir === 'row' ? 0 : -thick / 2}
@@ -1232,15 +1232,15 @@ export function Workspace({
                   aria-hidden
                   pointerEvents="none"
                   position="absolute"
-                  left="50%"
-                  top="50%"
+                  l="50%"
+                  t="50%"
                   x={d.dir === 'row' ? -0.5 : -12}
                   y={d.dir === 'row' ? -12 : -0.5}
                   width={d.dir === 'row' ? 1 : 24}
                   height={d.dir === 'row' ? 24 : 1}
-                  borderRadius={9999}
-                  backgroundColor="var(--white-20)"
-                  $group-hover={{ backgroundColor: 'var(--white-40)' }}
+                  rounded={9999}
+                  bg="var(--white-20)"
+                  $group-hover={{ bg: 'var(--white-40)' }}
                 />
               </YStack>
             );
@@ -1251,7 +1251,7 @@ export function Workspace({
           <YStack
             position="absolute"
             inset={0}
-            zIndex={30}
+            z={30}
             cursor={drag.dir === 'row' ? 'col-resize' : 'row-resize'}
           />
         ) : null}
@@ -1260,11 +1260,11 @@ export function Workspace({
           <YStack
             position="absolute"
             inset={0}
-            zIndex={40}
-            alignItems="center"
-            justifyContent="center"
-            padding="$4"
-            backgroundColor="rgb(0 0 0 / 0.7)"
+            z={40}
+            items="center"
+            justify="center"
+            p="$4"
+            bg="rgb(0 0 0 / 0.7)"
           >
             <Picker
               hosts={picking.from}
@@ -1291,7 +1291,7 @@ export function Workspace({
  */
 function Act({ run, icon, label }: { run: () => void; icon: ReactNode; label: string }) {
   return (
-    <Button variant="outline" size="sm" flexShrink={0} onPress={run}>
+    <Button variant="outline" size="sm" shrink={0} onPress={run}>
       {icon}
       <SizableText size="$1">{label}</SizableText>
     </Button>
@@ -1311,14 +1311,14 @@ function Picker({
   return (
     <YStack
       width="100%"
-      maxWidth={320}
-      padding="$3"
-      borderRadius="$4"
+      maxW={320}
+      p="$3"
+      rounded="$4"
       borderWidth={1}
       borderColor="$borderColor"
-      backgroundColor="var(--card)"
+      bg="var(--card)"
     >
-      <SizableText marginBottom="$2" size="$1" color="var(--muted-foreground)">
+      <SizableText mb="$2" size="$1" color="var(--muted-foreground)">
         Where should this shell run?
       </SizableText>
       <YStack render="ul" gap="$1">
@@ -1327,10 +1327,10 @@ function Picker({
             <Button
               variant="ghost"
               width="100%"
-              minHeight={44}
-              justifyContent="flex-start"
+              minH={44}
+              justify="flex-start"
               gap="$2"
-              paddingHorizontal="$2"
+              px="$2"
               onPress={() => onPick(h.machine)}
             >
               <Dot status={h.status} />
@@ -1339,7 +1339,7 @@ function Picker({
               </SizableText>
               {h.label ? (
                 <SizableText
-                  marginLeft="auto"
+                  ml="auto"
                   size="$1"
                   numberOfLines={1}
                   ellipsis
@@ -1352,7 +1352,7 @@ function Picker({
           </YStack>
         ))}
       </YStack>
-      <Button variant="ghost" size="sm" width="100%" marginTop="$2" onPress={onCancel}>
+      <Button variant="ghost" size="sm" width="100%" mt="$2" onPress={onCancel}>
         <SizableText size="$1" color="var(--muted-foreground)">
           Cancel
         </SizableText>

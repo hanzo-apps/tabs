@@ -42,18 +42,18 @@ export default function Marketing() {
     <YStack
       render="main"
       width="100%"
-      maxWidth={768}
-      marginHorizontal="auto"
-      paddingHorizontal="$5"
-      paddingVertical="$11"
+      maxW={768}
+      mx="auto"
+      px="$5"
+      py="$11"
     >
       <Resume />
       <SizableText
         fontFamily="$mono"
         size="$1"
         textTransform="uppercase"
-        letterSpacing="0.2em"
         color="var(--text-tertiary)"
+        style={{ letterSpacing: '0.2em' }}
       >
         Hanzo Tabs
       </SizableText>
@@ -64,7 +64,7 @@ export default function Marketing() {
           optimizing compiler, measured: `$gtXs` on a background changed no
           pixel, so a breakpoint expressed that way would be silently absent. */}
       <H1
-        marginTop="$4"
+        mt="$4"
         size="$10"
         fontWeight="600"
         style={{ fontSize: 'clamp(var(--text-4xl), 4.5vw, var(--text-5xl))', lineHeight: '1.06' }}
@@ -73,39 +73,39 @@ export default function Marketing() {
       </H1>
       {/* 672, not 768: at 576px this sentence breaks with "a browser." alone on
           a third line at every width above the phone. */}
-      <Paragraph marginTop="$4.5" maxWidth={672} size="$4" color="var(--muted-foreground)">
+      <Paragraph mt="$4.5" maxW={672} size="$4" color="var(--muted-foreground)">
         Your coding agents work in shells on real machines. Tabs puts every one of those shells in
         front of you — split, tiled, and reachable from anywhere you can open a browser.
       </Paragraph>
 
-      <XStack marginTop="$6" flexWrap="wrap" alignItems="center" gap="$3">
-        <Button variant="primary" size="lg" minHeight={44} render={<Link href="/app" />}>
+      <XStack mt="$6" flexWrap="wrap" items="center" gap="$3">
+        <Button variant="primary" size="lg" minH={44} render={<Link href="/app" />}>
           Open Tabs
         </Button>
-        <Button variant="outline" size="lg" minHeight={44} render={<a href="https://github.com/hanzoai/tabs" />}>
+        <Button variant="outline" size="lg" minH={44} render={<a href="https://github.com/hanzoai/tabs" />}>
           Source
         </Button>
       </XStack>
 
       {/* The one instruction that makes the product exist. */}
       <YStack
-        marginTop="$9"
-        padding="$4.5"
+        mt="$9"
+        p="$4.5"
         borderWidth={1}
         borderColor="$borderColor"
-        borderRadius="$5"
+        rounded="$5"
       >
         <SizableText size="$1" color="var(--text-tertiary)">
           Link a machine, and it appears here.
         </SizableText>
-        <SizableText render="pre" marginTop="$3" fontFamily="$mono" size="$2">
+        <SizableText render="pre" mt="$3" fontFamily="$mono" size="$2">
           <SizableText render="code" fontFamily="$mono" size="$2">
             hanzo link
           </SizableText>
         </SizableText>
         {/* Prose, so it reads at prose size. The label size above is 11px, which is
             a size for a label, not for two sentences. */}
-        <Paragraph marginTop="$3" size="$2" color="var(--text-tertiary)">
+        <Paragraph mt="$3" size="$2" color="var(--text-tertiary)">
           Run it on a laptop, a workstation, a GPU box — anything with a shell. The machine keeps
           the connection; nothing is exposed to the network it sits on.
         </Paragraph>
@@ -114,13 +114,13 @@ export default function Marketing() {
       {/* Two columns wherever two fit. A column narrower than 280px is not worth
           having, which is a fact about the text — so it is a basis the row wraps
           on, not a viewport width someone has to keep in sync with the layout. */}
-      <XStack render="dl" marginTop="$10" marginBottom={0} flexWrap="wrap" columnGap="$7" rowGap="$6">
+      <XStack render="dl" mt="$10" mb={0} flexWrap="wrap" columnGap="$7" rowGap="$6">
         {FACTS.map((f) => (
-          <YStack key={f.k} flexBasis={280} flexGrow={1}>
+          <YStack key={f.k} flexBasis={280} grow={1}>
             <SizableText render="dt" size="$2" fontWeight="500">
               {f.k}
             </SizableText>
-            <Paragraph render="dd" marginTop="$0.25" size="$2" color="var(--muted-foreground)">
+            <Paragraph render="dd" mt="$0.25" size="$2" color="var(--muted-foreground)">
               {f.v}
             </Paragraph>
           </YStack>
@@ -129,10 +129,10 @@ export default function Marketing() {
 
       <XStack
         render="footer"
-        marginTop="$11"
-        paddingTop="$5"
+        mt="$11"
+        pt="$5"
         flexWrap="wrap"
-        alignItems="center"
+        items="center"
         columnGap="$4.5"
         rowGap="$2"
         borderTopWidth={1}
@@ -146,9 +146,9 @@ export default function Marketing() {
         <Anchor
           href="https://hanzo.app"
           size="$1"
-          minHeight={44}
+          minH={44}
           display="inline-flex"
-          alignItems="center"
+          items="center"
           color="var(--text-disabled)"
           hoverStyle={{ color: 'var(--muted-foreground)' }}
         >
@@ -157,15 +157,15 @@ export default function Marketing() {
         <Anchor
           href="https://github.com/hanzoai/tabs"
           size="$1"
-          minHeight={44}
+          minH={44}
           display="inline-flex"
-          alignItems="center"
+          items="center"
           color="var(--text-disabled)"
           hoverStyle={{ color: 'var(--muted-foreground)' }}
         >
           github.com/hanzoai/tabs
         </Anchor>
-        <SizableText size="$1" marginLeft="auto" color="var(--text-disabled)">
+        <SizableText size="$1" ml="auto" color="var(--text-disabled)">
           Hanzo AI
         </SizableText>
       </XStack>
