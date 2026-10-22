@@ -562,6 +562,8 @@ export function Workspace({
   const [waited, setWaited] = useState<Record<string, boolean>>({});
   const frames = useRef<Record<string, HTMLIFrameElement | null>>({});
 
+  const [size, setSize] = useState(loadSize);
+
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       if (!isReady(e.data)) return;
@@ -571,13 +573,18 @@ export function Workspace({
       for (const [id, el] of Object.entries(frames.current)) {
         if (el && e.source === el.contentWindow) {
           setAlive((a) => (a[id] ? a : { ...a, [id]: true }));
+          el.contentWindow?.postMessage({
+            source: 'hanzo-term',
+            fontSize: size,
+            fontFamily: "'Geist Mono', 'Zen Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          }, '*');
           return;
         }
       }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, []);
+  }, [size]);
 
   // The reader's type size, told to every terminal that is up.
   //
@@ -586,11 +593,16 @@ export function Workspace({
   // signal, used for the same reason, rather than a second notion of when a
   // frame can be spoken to. A pane that never answers is never sent to, which is
   // right: there is nothing there to hear it.
-  const [size, setSize] = useState(loadSize);
   useEffect(() => {
     window.localStorage.setItem(SIZE_KEY, String(size));
     for (const [id, el] of Object.entries(frames.current)) {
-      if (alive[id]) el?.contentWindow?.postMessage({ source: 'hanzo-term', fontSize: size }, '*');
+      if (alive[id]) {
+        el?.contentWindow?.postMessage({
+          source: 'hanzo-term',
+          fontSize: size,
+          fontFamily: "'Geist Mono', 'Zen Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+        }, '*');
+      }
     }
   }, [size, alive]);
 
@@ -771,9 +783,9 @@ export function Workspace({
     watchable.length ? openHere(screenOn, watchable, dir, target) : launch('desktop');
 
   return (
-    <YStack height="100%" width="100%" gap="$1.5">
+    <YStack height="100%" width="100%" gap="$2.5" p="$3">
       {/* One row. Actions, not a status report. */}
-      <XStack shrink={0} items="center" gap="$1.5">
+      <XStack shrink={0} items="center" gap="$2">
         {start}
         <Act
           run={() => openShell(focus ? 'row' : null, focus)}
@@ -803,7 +815,7 @@ export function Workspace({
             label="New cloud machine"
           />
         ) : null}
-        <XStack ml="auto" shrink={0} items="center" gap="$1">
+        <XStack ml="auto" shrink={0} items="center" gap="$1.5">
           {/* Type size. Two buttons and the number they move — a stepper IS the
               setting, so there is no panel to open and nothing to find. It reads
               its own state, which a slider or a menu would each need a second
