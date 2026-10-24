@@ -294,6 +294,7 @@ function Address({
       height={CHIP}
       rounded={4}
       fontSize={12}
+      fontFamily="$mono"
       px="$2"
       borderColor={refused ? 'var(--destructive)' : 'var(--border)'}
       bg="var(--background)"
@@ -840,6 +841,7 @@ export function Workspace({
             </Button>
             <SizableText
               size="$1"
+              fontFamily="$mono"
               minW={24}
               text="center"
               select="none"
@@ -906,6 +908,7 @@ export function Workspace({
               >
                 <SizableText
                   size="$1"
+                  fontFamily="$mono"
                   numberOfLines={1}
                   ellipsis
                   color={i === page ? '$color' : 'var(--muted-foreground)'}
@@ -1020,6 +1023,7 @@ export function Workspace({
                   <Dot status={b.kind === 'gone' ? 'offline' : (host?.status ?? 'offline')} />
                   <SizableText
                     size="$1"
+                    fontFamily="$mono"
                     numberOfLines={1}
                     ellipsis
                     color={on ? '$color' : 'var(--muted-foreground)'}
